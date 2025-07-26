@@ -3,9 +3,11 @@ import { CameraManager } from './camera.js';
 import { ModelManager } from './models.js';
 import { InferenceEngine } from './inference.js';
 import { PostProcessor } from './postprocess.js';
+import { DependencyLoader } from './dependencyLoader.js';
 
 class ObjectDetectionApp {
   constructor() {
+    this.dependencyLoader = new DependencyLoader();
     this.camera = new CameraManager();
     this.modelManager = new ModelManager();
     this.inferenceEngine = new InferenceEngine();
@@ -45,10 +47,17 @@ class ObjectDetectionApp {
         overheadFps: document.getElementById('overhead-fps')
       };
 
+      // Load dependencies with fallback strategy
+      console.log('🚀 Loading dependencies...');
+      this.elements.loading.textContent = 'Loading dependencies...';
+      await this.dependencyLoader.loadOnnxRuntime();
+      
       // Initialize camera
+      this.elements.loading.textContent = 'Initializing camera...';
       await this.camera.initialize(this.elements.video, this.elements.canvas);
       
       // Load initial model
+      this.elements.loading.textContent = 'Loading AI model...';
       await this.modelManager.loadCurrentModel();
       this.updateModelDisplay();
       
@@ -58,7 +67,8 @@ class ObjectDetectionApp {
       // Hide loading
       this.elements.loading.style.display = 'none';
       
-      console.log('Application initialized successfully');
+      console.log('✅ Application initialized successfully');
+      this.logDependencyStatus();
     } catch (error) {
       console.error('Failed to initialize application:', error);
       this.showError('Failed to initialize application: ' + error.message);
@@ -284,6 +294,17 @@ class ObjectDetectionApp {
     this.elements.overheadFps.textContent = `Overhead FPS: ${overheadFps}fps`;
   }
 
+  logDependencyStatus() {
+    const status = this.dependencyLoader.getStatus();
+    console.log('📊 Dependency Status:', status);
+    
+    if (status.onnxRuntimeAvailable) {
+      console.log(`✅ ONNX Runtime ${status.onnxRuntimeVersion} loaded successfully`);
+    } else {
+      console.warn('⚠️ ONNX Runtime not available');
+    }
+  }
+
   showError(message) {
     // Remove any existing error messages
     const existingError = document.querySelector('.error-toast');
@@ -338,9 +359,7 @@ function validateBrowserSupport() {
     errors.push('WebAssembly is not supported (required for ONNX Runtime)');
   }
   
-  if (typeof ort === 'undefined') {
-    errors.push('ONNX Runtime failed to load');
-  }
+  // Note: ONNX Runtime check moved to dependency loading phase
   
   if (!window.requestAnimationFrame) {
     errors.push('RequestAnimationFrame is not supported');
@@ -371,7 +390,7 @@ function showCompatibilityError(errors) {
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    // Validate browser support
+    // Validate browser support (ONNX Runtime check moved to app initialization)
     const compatibilityErrors = validateBrowserSupport();
     if (compatibilityErrors.length > 0) {
       showCompatibilityError(compatibilityErrors);
