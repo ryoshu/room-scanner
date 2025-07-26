@@ -1,18 +1,42 @@
 // Image preprocessing and tensor operations
 export class InferenceEngine {
   constructor() {
-    // No external dependencies needed
+    // Canvas cache for different resolutions to avoid repeated creation
+    this.processingCanvasCache = new Map();
+    this.maxCacheSize = 5; // Limit cache size to prevent memory leaks
   }
 
-  // Resize canvas context to target dimensions
-  resizeCanvasContext(ctx, targetWidth, targetHeight) {
-    // Create a new canvas with target dimensions
-    const canvas = document.createElement('canvas');
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-    const newContext = canvas.getContext('2d');
+  // Get or create cached canvas for target dimensions
+  getCachedCanvas(targetWidth, targetHeight) {
+    const key = `${targetWidth}x${targetHeight}`;
     
-    // Draw the source canvas into the target canvas
+    if (!this.processingCanvasCache.has(key)) {
+      // Check cache size limit
+      if (this.processingCanvasCache.size >= this.maxCacheSize) {
+        // Remove oldest entry (first one in Map)
+        const oldestKey = this.processingCanvasCache.keys().next().value;
+        this.processingCanvasCache.delete(oldestKey);
+      }
+      
+      // Create new canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      this.processingCanvasCache.set(key, canvas);
+    }
+    
+    return this.processingCanvasCache.get(key);
+  }
+
+  // Resize canvas context to target dimensions (optimized with caching)
+  resizeCanvasContext(ctx, targetWidth, targetHeight) {
+    const cachedCanvas = this.getCachedCanvas(targetWidth, targetHeight);
+    const newContext = cachedCanvas.getContext('2d', { willReadFrequently: true });
+    
+    // Clear previous content
+    newContext.clearRect(0, 0, targetWidth, targetHeight);
+    
+    // Draw the source canvas into the cached canvas
     newContext.drawImage(ctx.canvas, 0, 0, targetWidth, targetHeight);
     
     return newContext;
@@ -29,27 +53,25 @@ export class InferenceEngine {
     const imageData = resizedCtx.getImageData(0, 0, targetWidth, targetHeight);
     const { data, width, height } = imageData;
     
-    // Convert image data to tensor format manually
+    // Convert image data to tensor format (optimized)
     // Input: RGBA pixel data (data[0] = R, data[1] = G, data[2] = B, data[3] = A)
     // Output: Float32 tensor in format [1, 3, height, width] with values 0-1
     
-    const tensorData = new Float32Array(width * height * 3);
+    const pixelCount = width * height;
+    const tensorData = new Float32Array(pixelCount * 3);
     
-    // Extract RGB channels and normalize to 0-1
+    // Extract RGB channels and normalize to 0-1 (optimized loop)
     // Tensor format: [batch, channels, height, width] = [1, 3, height, width]
-    const channelSize = width * height;
+    const channelSize = pixelCount;
     
-    for (let i = 0; i < width * height; i++) {
-      const pixelIndex = i * 4; // RGBA format
+    // Batch process pixels for better performance
+    for (let i = 0, j = 0; i < pixelCount; i++, j += 4) {
+      const inv255 = 1 / 255; // Avoid repeated division
       
-      // Red channel (index 0)
-      tensorData[i] = data[pixelIndex] / 255.0;
-      
-      // Green channel (index 1) 
-      tensorData[channelSize + i] = data[pixelIndex + 1] / 255.0;
-      
-      // Blue channel (index 2)
-      tensorData[channelSize * 2 + i] = data[pixelIndex + 2] / 255.0;
+      // Process all channels in one iteration
+      tensorData[i] = data[j] * inv255;                           // R
+      tensorData[i + channelSize] = data[j + 1] * inv255;         // G  
+      tensorData[i + channelSize * 2] = data[j + 2] * inv255;     // B
     }
 
     // Create ONNX tensor
@@ -67,5 +89,10 @@ export class InferenceEngine {
     const r = Math.round(255 * (1 - conf));
     const g = Math.round(255 * conf);
     return `rgb(${r},${g},0)`;
+  }
+
+  // Cleanup method to free memory
+  cleanup() {
+    this.processingCanvasCache.clear();
   }
 }

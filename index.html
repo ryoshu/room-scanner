@@ -3,37 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edge object detection</title>o">
+    <meta name="description" content="Browser-based real-time object detection using YOLO models">
+    <title>Real-Time Object Detection</title>
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
-    <main class="app-container">
-        <!--h1 class="app-title">Real-Time Object Detection</h1-->
-        
-        <div class="detection-container">
+    <header>
+        <h1 class="app-title">Real-Time Object Detection</h1>
+    </header>
+    
+    <main class="app-container" role="main">
+        <section class="detection-container" aria-label="Object Detection Interface">
             <div class="webcam-container">
-                <video id="webcam" autoplay muted playsinline></video>
-                <canvas id="detection-canvas"></canvas>
-                <div id="loading" class="loading-overlay">Loading...</div>
+                <video id="webcam" autoplay muted playsinline 
+                       aria-label="Camera feed for object detection"></video>
+                <canvas id="detection-canvas" 
+                        aria-label="Object detection overlay"
+                        role="img"></canvas>
+                <div id="loading" class="loading-overlay" aria-live="polite">Loading...</div>
             </div>
             
-            <div class="controls-container">
-                <div class="button-group">
-                    <button id="capture-btn" class="control-btn">Capture Photo</button>
-                    <button id="live-btn" class="control-btn">Live Detection</button>
+            <aside class="controls-container" aria-label="Detection Controls">
+                <div class="button-group" role="group" aria-label="Detection Actions">
+                    <button id="capture-btn" class="control-btn" 
+                            aria-describedby="capture-help">Capture Photo</button>
+                    <button id="live-btn" class="control-btn" 
+                            aria-describedby="live-help">Live Detection</button>
                 </div>
                 
-                <div class="button-group">
-                    <button id="switch-camera-btn" class="control-btn">Switch Camera</button>
-                    <button id="change-model-btn" class="control-btn">Change Model</button>
-                    <button id="reset-btn" class="control-btn">Reset</button>
+                <div class="button-group" role="group" aria-label="Settings">
+                    <button id="switch-camera-btn" class="control-btn" 
+                            aria-describedby="camera-help">Switch Camera</button>
+                    <button id="change-model-btn" class="control-btn" 
+                            aria-describedby="model-help">Change Model</button>
+                    <button id="reset-btn" class="control-btn" 
+                            aria-describedby="reset-help">Reset</button>
                 </div>
                 
-                <div id="model-info" class="model-info">
+                <div id="model-info" class="model-info" aria-live="polite">
                     Using <span id="current-model">Loading...</span>
                 </div>
                 
-                <div class="performance-metrics">
+                <div class="performance-metrics" aria-label="Performance Statistics">
                     <div class="metrics-column">
                         <div id="model-inference-time">Model Inference Time: 0ms</div>
                         <div id="total-time">Total Time: 0ms</div>
@@ -45,8 +56,17 @@
                         <div id="overhead-fps">Overhead FPS: 0fps</div>
                     </div>
                 </div>
+            </aside>
+            
+            <!-- Hidden help text for screen readers -->
+            <div class="sr-only">
+                <div id="capture-help">Take a single photo for object detection</div>
+                <div id="live-help">Toggle continuous real-time object detection</div>
+                <div id="camera-help">Switch between front and back camera</div>
+                <div id="model-help">Cycle through different YOLO detection models</div>
+                <div id="reset-help">Clear all detections and stop processing</div>
             </div>
-        </div>
+        </section>
     </main>
 
     <!-- Load ONNX Runtime -->

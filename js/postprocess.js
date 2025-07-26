@@ -8,11 +8,34 @@ export class PostProcessor {
 
   // Main postprocessing dispatcher
   postprocess(tensor, inferenceTime, ctx, modelResolution, modelName, conf2color) {
-    // Different YOLO versions have different output formats
-    if (modelName === 'yolov10n.onnx') {
-      this.postprocessYolov10(ctx, modelResolution, tensor, conf2color);
-    } else {
-      this.postprocessYolov7(ctx, modelResolution, tensor, conf2color);
+    // Validate inputs
+    if (!tensor || !ctx || !modelResolution || !modelName || !conf2color) {
+      console.warn('Invalid postprocessing parameters:', {
+        tensor: !!tensor,
+        ctx: !!ctx,
+        modelResolution: !!modelResolution,
+        modelName: !!modelName,
+        conf2color: !!conf2color
+      });
+      return;
+    }
+    
+    if (!tensor.data || tensor.data.length === 0) {
+      console.warn('Empty tensor data received');
+      return;
+    }
+    
+    try {
+      // Different YOLO versions have different output formats
+      if (modelName === 'yolov10n.onnx') {
+        this.postprocessYolov10(ctx, modelResolution, tensor, conf2color);
+      } else {
+        this.postprocessYolov7(ctx, modelResolution, tensor, conf2color);
+      }
+    } catch (error) {
+      console.error('Postprocessing failed:', error);
+      // Clear canvas on error
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     }
   }
 

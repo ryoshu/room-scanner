@@ -19,7 +19,36 @@ export class CameraManager {
       this.onVideoReady();
     });
 
+    // Check camera permissions before attempting to access
+    const hasPermission = await this.checkCameraPermissions();
+    if (!hasPermission) {
+      throw new Error('Camera permission denied. Please allow camera access and refresh the page.');
+    }
+
     await this.startCamera();
+  }
+
+  async checkCameraPermissions() {
+    try {
+      // Check if Permissions API is supported
+      if ('permissions' in navigator) {
+        const result = await navigator.permissions.query({ name: 'camera' });
+        return result.state === 'granted' || result.state === 'prompt';
+      }
+      
+      // Fallback: try to enumerate devices (requires permission in some browsers)
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasVideoInput = devices.some(device => device.kind === 'videoinput');
+        return hasVideoInput;
+      }
+      
+      // Final fallback: assume permission available if getUserMedia exists
+      return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    } catch (error) {
+      console.warn('Could not check camera permissions:', error);
+      return true; // Assume permission available and let getUserMedia handle the error
+    }
   }
 
   async startCamera() {
@@ -48,7 +77,20 @@ export class CameraManager {
       });
     } catch (error) {
       console.error('Error accessing camera:', error);
-      throw new Error('Failed to access camera. Please ensure camera permissions are granted.');
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to access camera. ';
+      if (error.name === 'NotAllowedError') {
+        errorMessage += 'Please allow camera access and refresh the page.';
+      } else if (error.name === 'NotFoundError') {
+        errorMessage += 'No camera device found.';
+      } else if (error.name === 'NotReadableError') {
+        errorMessage += 'Camera is already in use by another application.';
+      } else {
+        errorMessage += 'Please ensure camera permissions are granted.';
+      }
+      
+      throw new Error(errorMessage);
     }
   }
 
@@ -58,6 +100,18 @@ export class CameraManager {
       this.stream = null;
     }
     this.isVideoReady = false;
+  }
+
+  destroy() {
+    this.stopCamera();
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    if (this.resizeTimeout) {
+      cancelAnimationFrame(this.resizeTimeout);
+      this.resizeTimeout = null;
+    }
   }
 
   async switchCamera() {
@@ -77,10 +131,25 @@ export class CameraManager {
     const videoHeight = this.video.videoHeight;
     
     if (videoWidth > 0 && videoHeight > 0) {
-      // Set canvas size to match video display size
+      // Use ResizeObserver for efficient resize handling if available
+      if (!this.resizeObserver && window.ResizeObserver) {
+        this.setupResizeObserver();
+      }
+      
+      // Set canvas size to match video display size with device pixel ratio
       const rect = this.video.getBoundingClientRect();
-      this.canvas.width = rect.width;
-      this.canvas.height = rect.height;
+      const dpr = window.devicePixelRatio || 1;
+      
+      // Set display size
+      this.canvas.style.width = rect.width + 'px';
+      this.canvas.style.height = rect.height + 'px';
+      
+      // Set actual canvas size for crisp rendering
+      this.canvas.width = rect.width * dpr;
+      this.canvas.height = rect.height * dpr;
+      
+      // Scale context to handle device pixel ratio
+      this.context.scale(dpr, dpr);
       
       // Position canvas to overlay video
       this.canvas.style.position = 'absolute';
@@ -88,6 +157,20 @@ export class CameraManager {
       this.canvas.style.left = '0';
       this.canvas.style.pointerEvents = 'none';
     }
+  }
+
+  setupResizeObserver() {
+    this.resizeObserver = new ResizeObserver((entries) => {
+      // Use requestAnimationFrame to throttle resize events
+      if (this.resizeTimeout) return;
+      
+      this.resizeTimeout = requestAnimationFrame(() => {
+        this.updateCanvasSize();
+        this.resizeTimeout = null;
+      });
+    });
+    
+    this.resizeObserver.observe(this.video);
   }
 
   captureFrame() {

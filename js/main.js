@@ -16,6 +16,11 @@ class ObjectDetectionApp {
     this.inferenceTime = 0;
     this.totalTime = 0;
     
+    // Debouncing states
+    this.isChangingModel = false;
+    this.isSwitchingCamera = false;
+    this.isCapturing = false;
+    
     this.elements = {};
   }
 
@@ -95,9 +100,13 @@ class ObjectDetectionApp {
   }
 
   async capturePhoto() {
-    if (!this.camera.isReady()) return;
+    if (!this.camera.isReady() || this.isCapturing) return;
 
     try {
+      this.isCapturing = true;
+      this.elements.captureBtn.disabled = true;
+      this.elements.captureBtn.textContent = 'Processing...';
+      
       const startTime = Date.now();
       await this.runSingleDetection();
       this.totalTime = Date.now() - startTime;
@@ -105,6 +114,10 @@ class ObjectDetectionApp {
     } catch (error) {
       console.error('Capture failed:', error);
       this.showError('Capture failed: ' + error.message);
+    } finally {
+      this.isCapturing = false;
+      this.elements.captureBtn.disabled = false;
+      this.elements.captureBtn.textContent = 'Capture Photo';
     }
   }
 
@@ -193,17 +206,33 @@ class ObjectDetectionApp {
   }
 
   async switchCamera() {
+    if (this.isSwitchingCamera) return;
+
     try {
+      this.isSwitchingCamera = true;
+      this.elements.switchCameraBtn.disabled = true;
+      this.elements.switchCameraBtn.textContent = 'Switching...';
+      
       this.reset();
       await this.camera.switchCamera();
     } catch (error) {
       console.error('Failed to switch camera:', error);
       this.showError('Failed to switch camera: ' + error.message);
+    } finally {
+      this.isSwitchingCamera = false;
+      this.elements.switchCameraBtn.disabled = false;
+      this.elements.switchCameraBtn.textContent = 'Switch Camera';
     }
   }
 
   async changeModel() {
+    if (this.isChangingModel) return;
+
     try {
+      this.isChangingModel = true;
+      this.elements.changeModelBtn.disabled = true;
+      this.elements.changeModelBtn.textContent = 'Loading...';
+      
       this.reset();
       this.elements.currentModel.textContent = 'Loading...';
       
@@ -213,6 +242,10 @@ class ObjectDetectionApp {
       console.error('Failed to change model:', error);
       this.showError('Failed to change model: ' + error.message);
       this.updateModelDisplay(); // Restore previous model name
+    } finally {
+      this.isChangingModel = false;
+      this.elements.changeModelBtn.disabled = false;
+      this.elements.changeModelBtn.textContent = 'Change Model';
     }
   }
 
@@ -248,26 +281,129 @@ class ObjectDetectionApp {
   }
 
   showError(message) {
-    // Simple error display - could be enhanced with a proper modal
-    alert(message);
+    // Remove any existing error messages
+    const existingError = document.querySelector('.error-toast');
+    if (existingError) {
+      existingError.remove();
+    }
+
+    // Create error toast
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-toast';
+    errorDiv.innerHTML = `
+      <div class="error-content">
+        <span class="error-icon">⚠️</span>
+        <span class="error-message">${message}</span>
+        <button class="error-close" aria-label="Close error message">×</button>
+      </div>
+    `;
+    
+    document.body.appendChild(errorDiv);
+    
+    // Add close functionality
+    const closeBtn = errorDiv.querySelector('.error-close');
+    closeBtn.addEventListener('click', () => errorDiv.remove());
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      if (errorDiv.parentNode) {
+        errorDiv.remove();
+      }
+    }, 5000);
+    
+    // Announce to screen readers
+    errorDiv.setAttribute('role', 'alert');
+    errorDiv.setAttribute('aria-live', 'assertive');
   }
+}
+
+// Validate browser capabilities
+function validateBrowserSupport() {
+  const errors = [];
+  
+  // Check for required APIs
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    errors.push('Camera access (getUserMedia) is not supported in this browser');
+  }
+  
+  if (!window.OffscreenCanvas && !document.createElement('canvas').getContext) {
+    errors.push('Canvas API is not supported');
+  }
+  
+  if (!window.WebAssembly) {
+    errors.push('WebAssembly is not supported (required for ONNX Runtime)');
+  }
+  
+  if (typeof ort === 'undefined') {
+    errors.push('ONNX Runtime failed to load');
+  }
+  
+  if (!window.requestAnimationFrame) {
+    errors.push('RequestAnimationFrame is not supported');
+  }
+  
+  return errors;
+}
+
+// Show browser compatibility error
+function showCompatibilityError(errors) {
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'compatibility-error';
+  errorDiv.innerHTML = `
+    <div class="error-content">
+      <h2>Browser Compatibility Issues</h2>
+      <p>Your browser does not support the following required features:</p>
+      <ul>
+        ${errors.map(error => `<li>${error}</li>`).join('')}
+      </ul>
+      <p>Please try using a modern browser like Chrome, Firefox, Safari, or Edge.</p>
+    </div>
+  `;
+  
+  document.body.innerHTML = '';
+  document.body.appendChild(errorDiv);
 }
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
-  // Check for required APIs
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Camera access is not supported in this browser');
-    return;
+  try {
+    // Validate browser support
+    const compatibilityErrors = validateBrowserSupport();
+    if (compatibilityErrors.length > 0) {
+      showCompatibilityError(compatibilityErrors);
+      return;
+    }
+
+    // Initialize the application with error boundary
+    const app = new ObjectDetectionApp();
+    await app.initialize();
+    
+    // Add global error handler for unhandled errors
+    window.addEventListener('error', (event) => {
+      console.error('Global error:', event.error);
+      app.showError('An unexpected error occurred. Please refresh the page.');
+    });
+    
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('Unhandled promise rejection:', event.reason);
+      app.showError('An unexpected error occurred. Please refresh the page.');
+      event.preventDefault();
+    });
+    
+  } catch (error) {
+    console.error('Failed to initialize application:', error);
+    
+    // Fallback error display if app.showError is not available
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'init-error';
+    errorDiv.innerHTML = `
+      <div class="error-content">
+        <h2>Initialization Failed</h2>
+        <p>${error.message}</p>
+        <button onclick="location.reload()">Reload Page</button>
+      </div>
+    `;
+    
+    document.body.appendChild(errorDiv);
   }
-
-  if (typeof ort === 'undefined') {
-    alert('ONNX Runtime is not loaded');
-    return;
-  }
-
-
-  // Initialize the application
-  const app = new ObjectDetectionApp();
-  await app.initialize();
 });
