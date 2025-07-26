@@ -155,6 +155,7 @@ body {
     height: 100%;
     object-fit: cover;
     display: block;
+    background-color: #111;
 }
 
 #detection-canvas {
@@ -166,6 +167,9 @@ body {
     pointer-events: none;
     z-index: 10;
     background-color: transparent;
+    /* Ensure canvas scales properly */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
 }
 
 /* Larger screens: Allow bigger camera view */

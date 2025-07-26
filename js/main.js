@@ -145,13 +145,17 @@ class ObjectDetectionApp {
     // Postprocess and draw results
     const overlayCtx = this.camera.captureFrame(); // Get overlay canvas context
     if (overlayCtx) {
+      // Get display dimensions for proper coordinate scaling
+      const displayDimensions = this.camera.getDisplayDimensions();
+      
       this.postProcessor.postprocess(
         outputTensor,
         inferenceTime,
         overlayCtx,
         config.resolution,
         config.name,
-        this.inferenceEngine.conf2color.bind(this.inferenceEngine)
+        this.inferenceEngine.conf2color.bind(this.inferenceEngine),
+        displayDimensions
       );
     }
   }

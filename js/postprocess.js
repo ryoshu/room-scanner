@@ -7,7 +7,7 @@ export class PostProcessor {
   }
 
   // Main postprocessing dispatcher
-  postprocess(tensor, inferenceTime, ctx, modelResolution, modelName, conf2color) {
+  postprocess(tensor, inferenceTime, ctx, modelResolution, modelName, conf2color, displayDimensions) {
     // Validate inputs
     if (!tensor || !ctx || !modelResolution || !modelName || !conf2color) {
       console.warn('Invalid postprocessing parameters:', {
@@ -28,9 +28,9 @@ export class PostProcessor {
     try {
       // Different YOLO versions have different output formats
       if (modelName === 'yolov10n.onnx') {
-        this.postprocessYolov10(ctx, modelResolution, tensor, conf2color);
+        this.postprocessYolov10(ctx, modelResolution, tensor, conf2color, displayDimensions);
       } else {
-        this.postprocessYolov7(ctx, modelResolution, tensor, conf2color);
+        this.postprocessYolov7(ctx, modelResolution, tensor, conf2color, displayDimensions);
       }
     } catch (error) {
       console.error('Postprocessing failed:', error);
@@ -40,11 +40,17 @@ export class PostProcessor {
   }
 
   // Postprocessing for YOLOv10 models
-  postprocessYolov10(ctx, modelResolution, tensor, conf2color) {
-    const dx = ctx.canvas.width / modelResolution[0];
-    const dy = ctx.canvas.height / modelResolution[1];
-
+  postprocessYolov10(ctx, modelResolution, tensor, conf2color, displayDimensions) {
+    // Clear canvas
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // Get canvas dimensions (should match display dimensions)
+    const canvasWidth = ctx.canvas.width;
+    const canvasHeight = ctx.canvas.height;
+    
+    // Calculate scaling from model resolution to canvas size
+    const scaleX = canvasWidth / modelResolution[0];
+    const scaleY = canvasHeight / modelResolution[1];
 
     let x0, y0, x1, y1, cls_id, score;
 
@@ -62,39 +68,59 @@ export class PostProcessor {
         continue;
       }
 
-      // Scale to canvas size
-      [x0, x1] = [x0, x1].map(x => x * dx);
-      [y0, y1] = [y0, y1].map(x => x * dy);
+      // Transform coordinates from model space to canvas space
+      const scaledX0 = x0 * scaleX;
+      const scaledY0 = y0 * scaleY;
+      const scaledX1 = x1 * scaleX;
+      const scaledY1 = y1 * scaleY;
 
-      [x0, y0, x1, y1] = [x0, y0, x1, y1].map(x => Math.round(x));
+      // Round for pixel alignment
+      const rectX = Math.round(scaledX0);
+      const rectY = Math.round(scaledY0);
+      const rectWidth = Math.round(scaledX1 - scaledX0);
+      const rectHeight = Math.round(scaledY1 - scaledY0);
 
+      // Format score
       score = Math.round(score * 1000) / 10;
       const className = yoloClasses[cls_id];
       const label = className.charAt(0).toUpperCase() + className.substring(1) + ' ' + score + '%';
       const color = conf2color(score / 100);
 
+      // Responsive styling based on canvas size
+      const lineWidth = Math.max(1, Math.round(canvasWidth / 300));
+      const fontSize = Math.max(10, Math.round(canvasWidth / 40));
+
       // Draw bounding box
       ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.lineWidth = lineWidth;
+      ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
       
       // Draw label
-      ctx.font = '20px Arial';
+      ctx.font = `${fontSize}px Arial`;
       ctx.fillStyle = color;
-      ctx.fillText(label, x0, y0 - 5);
+      
+      // Smart label positioning
+      const labelY = rectY > fontSize + 5 ? rectY - 5 : rectY + fontSize + 5;
+      ctx.fillText(label, rectX, labelY);
 
-      // Fill rectangle with transparent color
-      ctx.fillStyle = color.replace(')', ', 0.2)').replace('rgb', 'rgba');
-      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      // Draw semi-transparent fill
+      ctx.fillStyle = color.replace(')', ', 0.15)').replace('rgb', 'rgba');
+      ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
     }
   }
 
   // Postprocessing for YOLOv7 models
-  postprocessYolov7(ctx, modelResolution, tensor, conf2color) {
-    const dx = ctx.canvas.width / modelResolution[0];
-    const dy = ctx.canvas.height / modelResolution[1];
-
+  postprocessYolov7(ctx, modelResolution, tensor, conf2color, displayDimensions) {
+    // Clear canvas
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // Get canvas dimensions (should match display dimensions)
+    const canvasWidth = ctx.canvas.width;
+    const canvasHeight = ctx.canvas.height;
+    
+    // Calculate scaling from model resolution to canvas size
+    const scaleX = canvasWidth / modelResolution[0];
+    const scaleY = canvasHeight / modelResolution[1];
 
     let batch_id, x0, y0, x1, y1, cls_id, score;
     
@@ -115,30 +141,44 @@ export class PostProcessor {
         continue;
       }
 
-      // Scale to canvas size
-      [x0, x1] = [x0, x1].map(x => x * dx);
-      [y0, y1] = [y0, y1].map(x => x * dy);
+      // Transform coordinates from model space to canvas space
+      const scaledX0 = x0 * scaleX;
+      const scaledY0 = y0 * scaleY;
+      const scaledX1 = x1 * scaleX;
+      const scaledY1 = y1 * scaleY;
 
-      [x0, y0, x1, y1] = [x0, y0, x1, y1].map(x => Math.round(x));
+      // Round for pixel alignment
+      const rectX = Math.round(scaledX0);
+      const rectY = Math.round(scaledY0);
+      const rectWidth = Math.round(scaledX1 - scaledX0);
+      const rectHeight = Math.round(scaledY1 - scaledY0);
 
+      // Format score
       score = Math.round(score * 1000) / 10;
       const className = yoloClasses[cls_id];
       const label = className.charAt(0).toUpperCase() + className.substring(1) + ' ' + score + '%';
       const color = conf2color(score / 100);
 
+      // Responsive styling based on canvas size
+      const lineWidth = Math.max(1, Math.round(canvasWidth / 300));
+      const fontSize = Math.max(10, Math.round(canvasWidth / 40));
+
       // Draw bounding box
       ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.lineWidth = lineWidth;
+      ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
       
       // Draw label
-      ctx.font = '20px Arial';
+      ctx.font = `${fontSize}px Arial`;
       ctx.fillStyle = color;
-      ctx.fillText(label, x0, y0 - 5);
+      
+      // Smart label positioning
+      const labelY = rectY > fontSize + 5 ? rectY - 5 : rectY + fontSize + 5;
+      ctx.fillText(label, rectX, labelY);
 
-      // Fill rectangle with transparent color
-      ctx.fillStyle = color.replace(')', ', 0.2)').replace('rgb', 'rgba');
-      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      // Draw semi-transparent fill
+      ctx.fillStyle = color.replace(')', ', 0.15)').replace('rgb', 'rgba');
+      ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
     }
   }
 }

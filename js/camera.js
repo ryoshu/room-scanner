@@ -136,26 +136,31 @@ export class CameraManager {
         this.setupResizeObserver();
       }
       
-      // Set canvas size to match video display size with device pixel ratio
+      // Get video display dimensions
       const rect = this.video.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
       
-      // Set display size
+      // Store dimensions for coordinate calculations
+      this.displayWidth = rect.width;
+      this.displayHeight = rect.height;
+      this.videoWidth = videoWidth;
+      this.videoHeight = videoHeight;
+      
+      // Set canvas display size to match video element
       this.canvas.style.width = rect.width + 'px';
       this.canvas.style.height = rect.height + 'px';
       
-      // Set actual canvas size for crisp rendering
-      this.canvas.width = rect.width * dpr;
-      this.canvas.height = rect.height * dpr;
-      
-      // Scale context to handle device pixel ratio
-      this.context.scale(dpr, dpr);
+      // Set canvas buffer size to display size for 1:1 coordinate mapping
+      this.canvas.width = rect.width;
+      this.canvas.height = rect.height;
       
       // Position canvas to overlay video
       this.canvas.style.position = 'absolute';
       this.canvas.style.top = '0';
       this.canvas.style.left = '0';
       this.canvas.style.pointerEvents = 'none';
+      
+      // Reset any existing transforms
+      this.context.setTransform(1, 0, 0, 1, 0, 0);
     }
   }
 
@@ -181,21 +186,23 @@ export class CameraManager {
     const canvas = this.canvas;
     const context = this.context;
     
-    // Clear canvas
+    // Clear canvas with full dimensions
     context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Save current state
+    context.save();
     
     // Handle front camera mirroring
     if (this.facingMode === 'user') {
-      context.setTransform(-1, 0, 0, 1, canvas.width, 0);
+      context.scale(-1, 1);
+      context.translate(-canvas.width, 0);
     }
 
-    // Draw video frame to canvas
-    context.drawImage(this.video, 0, 0, canvas.width, canvas.height);
+    // Note: We don't draw the video frame here anymore
+    // The overlay canvas is just for bounding boxes
     
-    // Reset transform
-    if (this.facingMode === 'user') {
-      context.setTransform(1, 0, 0, 1, 0, 0);
-    }
+    // Restore state
+    context.restore();
 
     return context;
   }
@@ -233,5 +240,20 @@ export class CameraManager {
 
   isReady() {
     return this.isVideoReady;
+  }
+
+  getDisplayDimensions() {
+    return {
+      width: this.displayWidth || 0,
+      height: this.displayHeight || 0,
+      devicePixelRatio: this.devicePixelRatio || 1
+    };
+  }
+
+  getVideoAspectRatio() {
+    if (!this.video || !this.video.videoWidth || !this.video.videoHeight) {
+      return 16/9; // Default aspect ratio
+    }
+    return this.video.videoWidth / this.video.videoHeight;
   }
 }
