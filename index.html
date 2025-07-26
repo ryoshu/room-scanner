@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edge object detection</title>o">
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+    <main class="app-container">
+        <!--h1 class="app-title">Real-Time Object Detection</h1-->
+        
+        <div class="detection-container">
+            <div class="webcam-container">
+                <video id="webcam" autoplay muted playsinline></video>
+                <canvas id="detection-canvas"></canvas>
+                <div id="loading" class="loading-overlay">Loading...</div>
+            </div>
+            
+            <div class="controls-container">
+                <div class="button-group">
+                    <button id="capture-btn" class="control-btn">Capture Photo</button>
+                    <button id="live-btn" class="control-btn">Live Detection</button>
+                </div>
+                
+                <div class="button-group">
+                    <button id="switch-camera-btn" class="control-btn">Switch Camera</button>
+                    <button id="change-model-btn" class="control-btn">Change Model</button>
+                    <button id="reset-btn" class="control-btn">Reset</button>
+                </div>
+                
+                <div id="model-info" class="model-info">
+                    Using <span id="current-model">Loading...</span>
+                </div>
+                
+                <div class="performance-metrics">
+                    <div class="metrics-column">
+                        <div id="model-inference-time">Model Inference Time: 0ms</div>
+                        <div id="total-time">Total Time: 0ms</div>
+                        <div id="overhead-time">Overhead Time: +0ms</div>
+                    </div>
+                    <div class="metrics-column">
+                        <div id="model-fps">Model FPS: 0fps</div>
+                        <div id="total-fps">Total FPS: 0fps</div>
+                        <div id="overhead-fps">Overhead FPS: 0fps</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Load ONNX Runtime -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+    
+    <!-- Application modules -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
