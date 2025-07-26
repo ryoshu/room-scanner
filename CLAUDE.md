@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
-This is a vanilla JavaScript application that requires no build process. Development is done directly with the source files:
+This project supports both vanilla development (no build required) and optimized development with Vite:
 
-### Local Development
+### Vanilla Development (No Dependencies)
 ```bash
 # Serve the application using any HTTP server:
 
@@ -18,15 +18,55 @@ npx http-server -p 8080
 
 # Using PHP  
 php -S localhost:8080
+
+# Or use npm script (fallback)
+npm run serve:vanilla
 ```
 
-Access the application at `http://localhost:8080`
+### Vite Development (Enhanced Experience)
+```bash
+# Install dependencies first
+npm install
+
+# Start Vite dev server with hot reload
+npm run dev
+
+# Or custom dev server with enhanced logging
+npm run dev:custom
+```
+
+### Production Build
+```bash
+# Build optimized production version
+npm run build
+
+# Build with detailed analysis
+npm run build:prod
+
+# Preview production build
+npm run preview
+npm run serve
+```
+
+### Other Commands
+```bash
+# Clean build artifacts
+npm run clean
+
+# Type check (placeholder for future TypeScript)
+npm run type-check
+
+# Lint and format (placeholders for future tooling)
+npm run lint
+npm run format
+```
 
 ### Testing
 - No automated test framework configured
 - Manual testing is done via browser DevTools
 - Test camera functionality in different browsers
 - Verify model loading and inference performance
+- Test both vanilla and built versions for consistency
 
 ## Architecture Overview
 

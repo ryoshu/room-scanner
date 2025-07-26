@@ -1,0 +1,35 @@
+{
+  "name": "vanilla-object-detection",
+  "version": "1.0.0",
+  "description": "Vanilla JavaScript real-time object detection using YOLO models",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:custom": "node scripts/dev-server.js",
+    "build": "vite build",
+    "build:prod": "node scripts/build-prod.js",
+    "preview": "vite preview",
+    "serve": "vite preview --port 8080",
+    "serve:vanilla": "python3 -m http.server 8080 || npx http-server -p 8080",
+    "clean": "rm -rf dist",
+    "analyze": "vite build --mode analyze",
+    "verify": "node scripts/verify-build.js",
+    "build:verify": "npm run build && npm run verify",
+    "type-check": "echo 'Type checking would go here with TypeScript'",
+    "format": "echo 'Code formatting would go here with Prettier'",
+    "lint": "echo 'Linting would go here with ESLint'"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  },
+  "keywords": [
+    "object-detection",
+    "yolo",
+    "computer-vision",
+    "vanilla-javascript",
+    "onnx",
+    "real-time"
+  ],
+  "author": "Claude Code",
+  "license": "MIT"
+}
