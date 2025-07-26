@@ -62,6 +62,9 @@ export class ModelManager {
         graphOptimizationLevel: 'all',
       });
       
+      // Check memory pressure before caching
+      this.manageMemoryPressure();
+      
       // Cache the loaded model
       this.loadedModels.set(cacheKey, this.currentSession);
       
@@ -229,6 +232,29 @@ export class ModelManager {
   }
 
   /**
+   * Manage memory pressure by clearing cache when needed
+   */
+  manageMemoryPressure() {
+    if (performance.memory) {
+      const memInfo = performance.memory;
+      const usageRatio = memInfo.usedJSHeapSize / memInfo.jsHeapSizeLimit;
+      
+      if (usageRatio > 0.8) {
+        console.warn('🧠 Memory pressure detected, clearing model cache');
+        this.clearCache();
+        
+        // Force garbage collection if available (Chrome DevTools)
+        if (typeof gc === 'function') {
+          gc();
+        }
+        
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Get memory usage information
    */
   getMemoryInfo() {
@@ -242,7 +268,8 @@ export class ModelManager {
       info.memoryUsage = {
         used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
         total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
-        limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)
+        limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024),
+        usageRatio: performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit
       };
     }
     

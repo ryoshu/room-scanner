@@ -16,6 +16,12 @@ export class AssetManager {
     this.loadAttempts = new Map();
     this.maxRetries = 2;
     this.timeout = 10000; // 10 seconds
+    this.maxCacheAge = 300000; // 5 minutes
+    
+    // Periodic cleanup to prevent memory leaks
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupOldAttempts();
+    }, 60000); // Cleanup every minute
   }
 
   /**
@@ -45,10 +51,26 @@ export class AssetManager {
       try {
         console.log(`📦 Loading ${assetType}/${filename} from ${source}: ${url}`);
         
+        // For local files, skip verification and trust they exist
+        // ONNX Runtime will give us a better error if the file doesn't exist
+        if (url.startsWith('./') || url.startsWith('/')) {
+          console.log(`✅ Using local ${assetType}/${filename} without verification`);
+          
+          this.loadAttempts.set(attemptKey, {
+            url,
+            source,
+            success: true,
+            timestamp: Date.now()
+          });
+          
+          return url;
+        }
+        
+        // For CDN files, verify availability
         const success = await this.verifyAssetAvailability(url, options);
         
         if (success) {
-          console.log(`✅ Successfully loaded ${assetType}/${filename} from ${source}`);
+          console.log(`✅ Successfully verified ${assetType}/${filename} from ${source}`);
           
           this.loadAttempts.set(attemptKey, {
             url,
@@ -100,9 +122,19 @@ export class AssetManager {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
     
     try {
+      // For local files, try a simpler GET request to check if accessible
+      const method = url.startsWith('./') || url.startsWith('/') ? 'GET' : 'HEAD';
+      
       const response = await fetch(url, {
-        method: 'HEAD',
+        method: method,
         signal: controller.signal,
+        cache: 'force-cache',
+        headers: {
+          'Accept': 'application/octet-stream, */*',
+          'Cache-Control': 'max-age=3600',
+          // Only add range header for local files to minimize download
+          ...(method === 'GET' && url.startsWith('./') ? { 'Range': 'bytes=0-1023' } : {})
+        },
         ...options.fetchOptions
       });
       
@@ -114,9 +146,18 @@ export class AssetManager {
       
       // Check content length if specified
       if (options.expectedSize) {
-        const contentLength = parseInt(response.headers.get('content-length') || '0');
-        if (contentLength > 0 && Math.abs(contentLength - options.expectedSize) > options.expectedSize * 0.1) {
-          throw new Error(`Size mismatch: expected ~${options.expectedSize}, got ${contentLength}`);
+        const contentLength = parseInt(response.headers.get('content-length') || response.headers.get('content-range')?.split('/')[1] || '0');
+        const tolerance = options.sizeTolerance || 0.1;
+        
+        if (contentLength > 0) {
+          const sizeDiff = Math.abs(contentLength - options.expectedSize) / options.expectedSize;
+          if (sizeDiff > tolerance) {
+            console.warn(`⚠️ Size difference detected: expected ~${options.expectedSize}, got ${contentLength} (${(sizeDiff * 100).toFixed(1)}% difference)`);
+            // Don't fail on size mismatch for local files, just warn
+            if (!url.startsWith('./')) {
+              throw new Error(`Size mismatch: expected ~${options.expectedSize}, got ${contentLength} (${(sizeDiff * 100).toFixed(1)}% difference)`);
+            }
+          }
         }
       }
       
@@ -231,11 +272,41 @@ export class AssetManager {
   }
 
   /**
+   * Clean up old load attempts to prevent memory leaks
+   */
+  cleanupOldAttempts() {
+    const now = Date.now();
+    let cleaned = 0;
+    
+    for (const [key, attempt] of this.loadAttempts) {
+      if (now - attempt.timestamp > this.maxCacheAge) {
+        this.loadAttempts.delete(key);
+        cleaned++;
+      }
+    }
+    
+    if (cleaned > 0) {
+      console.log(`🧹 Cleaned up ${cleaned} old asset load attempts`);
+    }
+  }
+
+  /**
+   * Destroy asset manager and cleanup resources
+   */
+  destroy() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.loadAttempts.clear();
+  }
+
+  /**
    * Preload critical assets
    */
   async preloadCriticalAssets() {
     const criticalAssets = [
-      { type: 'models', filename: 'yolov10n.onnx', expectedSize: 5000000 }
+      { type: 'models', filename: 'yolov10n.onnx', expectedSize: 9309375 }
     ];
     
     const results = [];

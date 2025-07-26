@@ -19,9 +19,22 @@ export class DependencyLoader {
       return this.loadingPromises.get(depKey);
     }
 
-    // Return immediately if already loaded
-    if (this.loadedDependencies.has(depKey) && typeof ort !== 'undefined') {
-      return { source: 'cached', version: ort.version || 'unknown' };
+    // Enhanced state validation for cached dependencies
+    if (this.loadedDependencies.has(depKey)) {
+      try {
+        // Verify ort is still available and functional
+        if (typeof ort !== 'undefined' && ort.InferenceSession && ort.Tensor) {
+          await this._verifyOnnxRuntime();
+          return { source: 'cached', version: ort.version || 'unknown' };
+        } else {
+          // Clean up stale state
+          this.loadedDependencies.delete(depKey);
+          console.warn('🧹 Cleaned up stale ONNX Runtime state, reloading...');
+        }
+      } catch (error) {
+        this.loadedDependencies.delete(depKey);
+        console.warn('🧹 ONNX Runtime state validation failed, reloading...', error.message);
+      }
     }
 
     const loadPromise = this._loadOnnxRuntimeInternal();
@@ -41,11 +54,13 @@ export class DependencyLoader {
       {
         name: 'CDN Primary',
         url: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js',
+        integrity: 'sha384-+sDrjb5Otytk3e52a47vPhUx98dLh5PCPk8NHBLoekdIAC8urCZbpRWfw/mMXYQv',
         source: 'CDN-Primary'
       },
       {
         name: 'CDN Fallback',
         url: 'https://unpkg.com/onnxruntime-web@1.18.0/dist/ort.min.js',
+        integrity: 'sha384-+sDrjb5Otytk3e52a47vPhUx98dLh5PCPk8NHBLoekdIAC8urCZbpRWfw/mMXYQv',
         source: 'CDN-Fallback'
       },
       {
@@ -59,7 +74,7 @@ export class DependencyLoader {
       try {
         console.log(`🔄 Loading ONNX Runtime from ${strategy.name}: ${strategy.url}`);
         
-        await this._loadScript(strategy.url);
+        await this._loadScript(strategy.url, strategy.integrity);
         
         // Verify ONNX Runtime is available and functional
         if (typeof ort === 'undefined') {
@@ -90,10 +105,16 @@ export class DependencyLoader {
   }
 
   /**
-   * Load script with timeout and error handling
+   * Load script with timeout, integrity checking, and security validation
    */
-  _loadScript(src) {
+  _loadScript(src, expectedIntegrity = null) {
     return new Promise((resolve, reject) => {
+      // Validate URL security
+      if (!this._validateScriptUrl(src)) {
+        reject(new Error(`Invalid or insecure script URL: ${src}`));
+        return;
+      }
+
       // Check if script already exists
       const existingScript = document.querySelector(`script[src="${src}"]`);
       if (existingScript) {
@@ -111,6 +132,15 @@ export class DependencyLoader {
       script.src = src;
       script.async = true;
       script.crossOrigin = 'anonymous';
+      script.referrerPolicy = 'no-referrer';
+      
+      // Add integrity check for CDN resources
+      if (expectedIntegrity && src.startsWith('https://')) {
+        script.integrity = expectedIntegrity;
+      }
+      
+      // Add security marker
+      script.setAttribute('data-loaded-by', 'onnx-dependency-loader');
       
       const timeout = setTimeout(() => {
         script.remove();
@@ -126,11 +156,49 @@ export class DependencyLoader {
       script.onerror = (event) => {
         clearTimeout(timeout);
         script.remove();
-        reject(new Error(`Failed to load script: ${src} - ${event.message || 'Unknown error'}`));
+        
+        // Check if error is due to integrity mismatch
+        const errorMsg = event.target?.error?.name === 'SecurityError' 
+          ? `Script integrity check failed: ${src}` 
+          : `Failed to load script: ${src} - ${event.message || 'Unknown error'}`;
+        
+        reject(new Error(errorMsg));
       };
       
       document.head.appendChild(script);
     });
+  }
+
+  /**
+   * Validate script URL for security
+   */
+  _validateScriptUrl(url) {
+    try {
+      const urlObj = new URL(url, window.location.origin);
+      
+      // Allow local scripts
+      if (urlObj.origin === window.location.origin) {
+        // Check for path traversal
+        if (url.includes('../') || url.includes('..\\')) {
+          return false;
+        }
+        return true;
+      }
+      
+      // Allow only specific CDN domains for HTTPS
+      const allowedCDNs = new Set([
+        'cdn.jsdelivr.net',
+        'unpkg.com'
+      ]);
+      
+      if (urlObj.protocol === 'https:' && allowedCDNs.has(urlObj.hostname)) {
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      return false;
+    }
   }
 
   /**
