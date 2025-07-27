@@ -92,9 +92,11 @@ class ObjectDetectionApp {
     });
 
     // Change model button
+    /*
     this.elements.changeModelBtn.addEventListener('click', async () => {
       await this.changeModel();
     });
+    */
 
     // Reset button
     this.elements.resetBtn.addEventListener('click', () => {
@@ -158,6 +160,13 @@ class ObjectDetectionApp {
       // Get display dimensions for proper coordinate scaling
       const displayDimensions = this.camera.getDisplayDimensions();
       
+      // Get YOLO-World configuration if applicable
+      /* YOLO-World functionality commented out
+      const yoloWorldConfig = this.modelManager.isCurrentModelYoloWorld() 
+        ? this.modelManager.getYoloWorldConfig() 
+        : null;
+      */
+      
       this.postProcessor.postprocess(
         outputTensor,
         inferenceTime,
@@ -166,6 +175,7 @@ class ObjectDetectionApp {
         config.name,
         this.inferenceEngine.conf2color.bind(this.inferenceEngine),
         displayDimensions
+        /* yoloWorldConfig */
       );
     }
   }

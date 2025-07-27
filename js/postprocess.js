@@ -1,5 +1,7 @@
 // Postprocessing functions for different YOLO models
 import { yoloClasses } from '../data/yolo_classes.js';
+// YOLO-World functionality commented out
+// import { yoloWorldConfig } from '../data/yolo_world_classes.js';
 
 export class PostProcessor {
   constructor() {
@@ -7,7 +9,7 @@ export class PostProcessor {
   }
 
   // Main postprocessing dispatcher
-  postprocess(tensor, inferenceTime, ctx, modelResolution, modelName, conf2color, displayDimensions) {
+  postprocess(tensor, inferenceTime, ctx, modelResolution, modelName, conf2color, displayDimensions /* yoloWorldConfig = null */) {
     // Validate inputs
     if (!tensor || !ctx || !modelResolution || !modelName || !conf2color) {
       console.warn('Invalid postprocessing parameters:', {
@@ -26,9 +28,18 @@ export class PostProcessor {
     }
     
     try {
+      // Check if this is YOLO-World mode - COMMENTED OUT
+      /* const isYoloWorld = yoloWorldConfig && yoloWorldConfig.isEnabled; */
+      
       // Different YOLO versions have different output formats
       if (modelName === 'yolov10n.onnx') {
-        this.postprocessYolov10(ctx, modelResolution, tensor, conf2color, displayDimensions);
+        /* YOLO-World functionality commented out
+        if (isYoloWorld) {
+          this.postprocessYoloWorld(ctx, modelResolution, tensor, conf2color, displayDimensions, yoloWorldConfig);
+        } else {
+        */
+          this.postprocessYolov10(ctx, modelResolution, tensor, conf2color, displayDimensions);
+        /* } */
       } else {
         this.postprocessYolov7(ctx, modelResolution, tensor, conf2color, displayDimensions);
       }
@@ -181,4 +192,200 @@ export class PostProcessor {
       ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
     }
   }
+
+  /*
+  // YOLO-World functionality commented out
+  
+  // Postprocessing for YOLO-World models (simulated)
+  postprocessYoloWorld(ctx, modelResolution, tensor, conf2color, displayDimensions, yoloWorldConfig) {
+    console.log('🌍 YOLO-World postprocessing with prompts:', yoloWorldConfig.currentPrompts);
+    
+    // Clear previous drawings
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    const { width: canvasWidth, height: canvasHeight } = displayDimensions;
+    const [modelWidth, modelHeight] = modelResolution;
+    
+    // Scale factors for coordinate conversion
+    const scaleX = canvasWidth / modelWidth;
+    const scaleY = canvasHeight / modelHeight;
+    
+    // Parse tensor data (same format as YOLOv10 but with YOLO-World filtering)
+    const numDetections = tensor.data.length / 6; // [x1, y1, x2, y2, confidence, class_id]
+    const detections = [];
+    
+    for (let i = 0; i < numDetections; i++) {
+      const startIdx = i * 6;
+      const x1 = tensor.data[startIdx];
+      const y1 = tensor.data[startIdx + 1];
+      const x2 = tensor.data[startIdx + 2];
+      const y2 = tensor.data[startIdx + 3];
+      const confidence = tensor.data[startIdx + 4];
+      const classId = Math.round(tensor.data[startIdx + 5]);
+      
+      // Use YOLO-World confidence threshold (lower than standard YOLO)
+      if (confidence < yoloWorldConfig.confidenceThreshold) continue;
+      
+      // Get class name
+      const className = yoloClasses[classId] || `class_${classId}`;
+      
+      // Filter by YOLO-World prompts (simulated)
+      if (yoloWorldConfig.customClasses.length > 0) {
+        if (!yoloWorldConfig.customClasses.includes(className)) {
+          continue; // Skip classes not in current prompts
+        }
+      }
+      
+      detections.push({
+        x1, y1, x2, y2, confidence, classId, className
+      });
+    }
+    
+    // Apply NMS (Non-Maximum Suppression)
+    const nmsDetections = this.applyNMS(detections, yoloWorldConfig.nmsThreshold);
+    
+    // Limit detections
+    const finalDetections = nmsDetections.slice(0, yoloWorldConfig.maxDetections);
+    
+    console.log(`🌍 YOLO-World found ${finalDetections.length} objects matching prompts`);
+    
+    // Draw detections with YOLO-World styling
+    finalDetections.forEach(det => {
+      const rectX = Math.round(det.x1 * scaleX);
+      const rectY = Math.round(det.y1 * scaleY);
+      const rectWidth = Math.round((det.x2 - det.x1) * scaleX);
+      const rectHeight = Math.round((det.y2 - det.y1) * scaleY);
+      
+      // Get color for this detection
+      const color = conf2color(det.confidence);
+      
+      // YOLO-World specific styling
+      this.drawYoloWorldDetection(ctx, {
+        rectX, rectY, rectWidth, rectHeight,
+        className: det.className,
+        confidence: det.confidence,
+        color,
+        isPromptMatch: yoloWorldConfig.currentPrompts.includes(det.className.toLowerCase())
+      });
+    });
+    
+    // Draw YOLO-World status
+    this.drawYoloWorldStatus(ctx, yoloWorldConfig, finalDetections.length, canvasWidth, canvasHeight);
+  }
+
+  // Draw individual YOLO-World detection with enhanced styling
+  drawYoloWorldDetection(ctx, detection) {
+    const { rectX, rectY, rectWidth, rectHeight, className, confidence, color, isPromptMatch } = detection;
+    
+    // Enhanced border for prompt matches
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isPromptMatch ? 3 : 2;
+    
+    // Dashed border for non-prompt matches
+    if (!isPromptMatch) {
+      ctx.setLineDash([5, 5]);
+    } else {
+      ctx.setLineDash([]);
+    }
+    
+    ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
+    ctx.setLineDash([]); // Reset dash
+    
+    // Label with confidence and prompt indicator
+    const fontSize = Math.max(12, Math.min(18, rectWidth / 10));
+    const label = `${className} ${(confidence * 100).toFixed(1)}%${isPromptMatch ? ' ✨' : ''}`;
+    
+    // Label background
+    ctx.fillStyle = color;
+    const textMetrics = ctx.measureText(label);
+    const labelWidth = textMetrics.width + 8;
+    const labelHeight = fontSize + 6;
+    const labelY = rectY > labelHeight ? rectY - labelHeight : rectY + rectHeight;
+    
+    ctx.fillRect(rectX, labelY, labelWidth, labelHeight);
+    
+    // Label text
+    ctx.fillStyle = 'white';
+    ctx.font = `${fontSize}px Arial`;
+    ctx.fillText(label, rectX + 4, labelY + fontSize + 2);
+    
+    // Semi-transparent fill with different opacity for prompt matches
+    const opacity = isPromptMatch ? 0.2 : 0.1;
+    ctx.fillStyle = color.replace(')', `, ${opacity})`).replace('rgb', 'rgba');
+    ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
+  }
+
+  // Draw YOLO-World status information
+  drawYoloWorldStatus(ctx, yoloWorldConfig, detectionCount, canvasWidth, canvasHeight) {
+    // Status panel
+    const panelHeight = 80;
+    const panelY = canvasHeight - panelHeight;
+    
+    // Semi-transparent background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, panelY, canvasWidth, panelHeight);
+    
+    // Title
+    ctx.fillStyle = '#00ff88';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText('🌍 YOLO-World Open Vocabulary Detection', 10, panelY + 20);
+    
+    // Prompts
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px Arial';
+    const promptText = `Prompts: ${yoloWorldConfig.currentPrompts.join(', ')}`;
+    ctx.fillText(promptText, 10, panelY + 40);
+    
+    // Detection count
+    const countText = `Detections: ${detectionCount} | Confidence: ${(yoloWorldConfig.confidenceThreshold * 100).toFixed(0)}%`;
+    ctx.fillText(countText, 10, panelY + 60);
+  }
+
+  // Apply Non-Maximum Suppression for YOLO-World
+  applyNMS(detections, nmsThreshold) {
+    // Sort by confidence
+    detections.sort((a, b) => b.confidence - a.confidence);
+    
+    const keep = [];
+    const suppressed = new Set();
+    
+    for (let i = 0; i < detections.length; i++) {
+      if (suppressed.has(i)) continue;
+      
+      keep.push(detections[i]);
+      
+      for (let j = i + 1; j < detections.length; j++) {
+        if (suppressed.has(j)) continue;
+        
+        // Calculate IoU (Intersection over Union)
+        const iou = this.calculateIoU(detections[i], detections[j]);
+        
+        if (iou > nmsThreshold) {
+          suppressed.add(j);
+        }
+      }
+    }
+    
+    return keep;
+  }
+
+  // Calculate Intersection over Union (IoU)
+  calculateIoU(det1, det2) {
+    const x1 = Math.max(det1.x1, det2.x1);
+    const y1 = Math.max(det1.y1, det2.y1);
+    const x2 = Math.min(det1.x2, det2.x2);
+    const y2 = Math.min(det1.y2, det2.y2);
+    
+    if (x2 <= x1 || y2 <= y1) return 0;
+    
+    const intersection = (x2 - x1) * (y2 - y1);
+    const area1 = (det1.x2 - det1.x1) * (det1.y2 - det1.y1);
+    const area2 = (det2.x2 - det2.x1) * (det2.y2 - det2.y1);
+    const union = area1 + area2 - intersection;
+    
+    return intersection / union;
+  }
+  
+  END OF YOLO-World functionality comment block
+  */
 }

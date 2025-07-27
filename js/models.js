@@ -1,14 +1,16 @@
 // Model management and configuration with CDN fallback support
 import { AssetManager } from './assetManager.js';
+// YOLO-World functionality commented out
+// import { yoloWorldClasses, classCategories, defaultPrompts, yoloWorldConfig } from '../data/yolo_world_classes.js';
 
 export class ModelManager {
   constructor() {
-    // Model configurations: [resolution, filename, expectedSize, priority]
+    // Model configurations: [resolution, filename, expectedSize, priority, type, description]
     this.RES_TO_MODEL = [
-      [[256, 256], 'yolov10n.onnx', 9309375, 'high'],      // Smallest, fastest
-      [[256, 256], 'yolov7-tiny_256x256.onnx', 24943827, 'high'],
-      [[320, 320], 'yolov7-tiny_320x320.onnx', 24949875, 'medium'],
-      [[640, 640], 'yolov7-tiny_640x640.onnx', 25000320, 'low'], // Largest, slowest
+      [[640, 640], 'yolov10n.onnx', 9309375, 'high', 'yolo-standard', 'YOLOv10n 640x640'],
+      [[256, 256], 'yolov7-tiny_256x256.onnx', 24943827, 'medium', 'yolo-standard', 'YOLOv7-Tiny 256x256'],
+      [[320, 320], 'yolov7-tiny_320x320.onnx', 24949875, 'medium', 'yolo-standard', 'YOLOv7-Tiny 320x320'],
+      [[640, 640], 'yolov7-tiny_640x640.onnx', 25000320, 'low', 'yolo-standard', 'YOLOv7-Tiny 640x640'],
     ];
     
     this.currentModelIndex = 0;
@@ -17,6 +19,14 @@ export class ModelManager {
     this.assetManager = new AssetManager();
     this.loadedModels = new Map(); // Cache for loaded models
     this.fallbackAttempted = false;
+    
+    // YOLO-World specific properties - commented out
+    /*
+    this.currentPrompts = [...defaultPrompts];
+    this.isYoloWorld = false;
+    this.textEmbeddings = new Map(); // Cache for text embeddings
+    this.customClasses = [...yoloWorldClasses];
+    */
   }
 
   getCurrentModelConfig() {
@@ -26,7 +36,10 @@ export class ModelManager {
       filename: model[1],
       expectedSize: model[2],
       priority: model[3],
-      name: model[1]
+      type: model[4] || 'yolo-standard',
+      description: model[5] || model[1],
+      name: model[1],
+      isYoloWorld: model[4] === 'yolo-world-sim' || model[4] === 'yolo-world'
     };
   }
 
@@ -68,9 +81,21 @@ export class ModelManager {
       // Cache the loaded model
       this.loadedModels.set(cacheKey, this.currentSession);
       
+      // Update YOLO-World state - commented out
+      /*
+      this.isYoloWorld = config.isYoloWorld;
+      */
+      
       console.log(`✅ Model loaded successfully: ${config.filename}`);
       console.log('📥 Input names:', this.currentSession.inputNames);
       console.log('📤 Output names:', this.currentSession.outputNames);
+      
+      /*
+      if (this.isYoloWorld) {
+        console.log('🌍 YOLO-World mode enabled with prompts:', this.currentPrompts);
+        console.log('🔧 Using confidence threshold:', yoloWorldConfig.confidenceThreshold);
+      }
+      */
       
       return this.currentSession;
       
@@ -275,4 +300,138 @@ export class ModelManager {
     
     return info;
   }
+
+  /**
+   * YOLO-World specific methods - COMMENTED OUT
+   */
+
+  /*
+  // Update text prompts for YOLO-World
+  setTextPrompts(prompts) {
+    if (!Array.isArray(prompts)) {
+      prompts = [prompts];
+    }
+    
+    this.currentPrompts = prompts.filter(p => p && p.trim().length > 0);
+    console.log('🌍 Updated YOLO-World prompts:', this.currentPrompts);
+    
+    // For simulation, map prompts to existing COCO classes
+    this.customClasses = this.mapPromptsToClasses(this.currentPrompts);
+    
+    return this.currentPrompts;
+  }
+
+  // Get current text prompts
+  getTextPrompts() {
+    return [...this.currentPrompts];
+  }
+
+  // Add a new text prompt
+  addTextPrompt(prompt) {
+    if (prompt && prompt.trim().length > 0) {
+      const cleanPrompt = prompt.trim().toLowerCase();
+      if (!this.currentPrompts.includes(cleanPrompt)) {
+        this.currentPrompts.push(cleanPrompt);
+        this.customClasses = this.mapPromptsToClasses(this.currentPrompts);
+        console.log('🌍 Added prompt:', cleanPrompt);
+      }
+    }
+    return this.currentPrompts;
+  }
+
+  // Remove a text prompt
+  removeTextPrompt(prompt) {
+    const index = this.currentPrompts.indexOf(prompt);
+    if (index > -1) {
+      this.currentPrompts.splice(index, 1);
+      this.customClasses = this.mapPromptsToClasses(this.currentPrompts);
+      console.log('🌍 Removed prompt:', prompt);
+    }
+    return this.currentPrompts;
+  }
+
+  // Get class categories for UI
+  getClassCategories() {
+    return classCategories;
+  }
+
+  // Set prompts from category
+  setPromptsFromCategory(category) {
+    if (classCategories[category]) {
+      this.setTextPrompts(classCategories[category]);
+    }
+    return this.currentPrompts;
+  }
+
+  // Check if current model is YOLO-World
+  isCurrentModelYoloWorld() {
+    return this.isYoloWorld;
+  }
+
+  // Get YOLO-World configuration
+  getYoloWorldConfig() {
+    return {
+      ...yoloWorldConfig,
+      isEnabled: this.isYoloWorld,
+      currentPrompts: this.currentPrompts,
+      customClasses: this.customClasses
+    };
+  }
+
+  // Map text prompts to existing COCO classes for simulation
+  // In a real YOLO-World implementation, this would use text embeddings
+  mapPromptsToClasses(prompts) {
+    const cocoClasses = [
+      'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+      'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+      'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+      'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+      'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+      'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+      'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
+      'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop',
+      'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
+      'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    ];
+
+    // Map prompts to COCO classes using fuzzy matching
+    const mappedClasses = [];
+    
+    for (const prompt of prompts) {
+      const lowerPrompt = prompt.toLowerCase();
+      
+      // Direct match
+      const directMatch = cocoClasses.find(cls => cls.toLowerCase() === lowerPrompt);
+      if (directMatch) {
+        mappedClasses.push(directMatch);
+        continue;
+      }
+      
+      // Partial match
+      const partialMatch = cocoClasses.find(cls => 
+        cls.toLowerCase().includes(lowerPrompt) || lowerPrompt.includes(cls.toLowerCase())
+      );
+      if (partialMatch) {
+        mappedClasses.push(partialMatch);
+        continue;
+      }
+      
+      // Synonym mapping for common cases
+      const synonymMap = {
+        'man': 'person', 'woman': 'person', 'people': 'person',
+        'vehicle': 'car', 'auto': 'car', 'automobile': 'car',
+        'phone': 'cell phone', 'mobile': 'cell phone',
+        'computer': 'laptop', 'notebook': 'laptop',
+        'food': 'sandwich', 'meal': 'sandwich'
+      };
+      
+      if (synonymMap[lowerPrompt]) {
+        mappedClasses.push(synonymMap[lowerPrompt]);
+      }
+    }
+    
+    // Remove duplicates
+    return [...new Set(mappedClasses)];
+  }
+  */
 }
