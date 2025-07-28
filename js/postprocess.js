@@ -19,12 +19,12 @@ export class PostProcessor {
         modelName: !!modelName,
         conf2color: !!conf2color
       });
-      return;
+      return [];
     }
     
     if (!tensor.data || tensor.data.length === 0) {
       console.warn('Empty tensor data received');
-      return;
+      return [];
     }
     
     try {
@@ -35,18 +35,19 @@ export class PostProcessor {
       if (modelName === 'yolov10n.onnx') {
         /* YOLO-World functionality commented out
         if (isYoloWorld) {
-          this.postprocessYoloWorld(ctx, modelResolution, tensor, conf2color, displayDimensions, yoloWorldConfig);
+          return this.postprocessYoloWorld(ctx, modelResolution, tensor, conf2color, displayDimensions, yoloWorldConfig);
         } else {
         */
-          this.postprocessYolov10(ctx, modelResolution, tensor, conf2color, displayDimensions);
+          return this.postprocessYolov10(ctx, modelResolution, tensor, conf2color, displayDimensions);
         /* } */
       } else {
-        this.postprocessYolov7(ctx, modelResolution, tensor, conf2color, displayDimensions);
+        return this.postprocessYolov7(ctx, modelResolution, tensor, conf2color, displayDimensions);
       }
     } catch (error) {
       console.error('Postprocessing failed:', error);
       // Clear canvas on error
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      return [];
     }
   }
 
@@ -63,6 +64,9 @@ export class PostProcessor {
     const scaleX = canvasWidth / modelResolution[0];
     const scaleY = canvasHeight / modelResolution[1];
 
+    // Track detected object names
+    const detectedObjects = new Set();
+    
     let x0, y0, x1, y1, cls_id, score;
 
     for (let i = 0; i < tensor.dims[1]; i += 6) {
@@ -96,6 +100,9 @@ export class PostProcessor {
       const className = yoloClasses[cls_id];
       const label = className.charAt(0).toUpperCase() + className.substring(1) + ' ' + score + '%';
       const color = conf2color(score / 100);
+      
+      // Add to detected objects set
+      detectedObjects.add(className);
 
       // Responsive styling based on canvas size
       const lineWidth = Math.max(1, Math.round(canvasWidth / 300));
@@ -118,6 +125,9 @@ export class PostProcessor {
       ctx.fillStyle = color.replace(')', ', 0.15)').replace('rgb', 'rgba');
       ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
     }
+    
+    // Return array of detected object names
+    return Array.from(detectedObjects);
   }
 
   // Postprocessing for YOLOv7 models
@@ -133,6 +143,9 @@ export class PostProcessor {
     const scaleX = canvasWidth / modelResolution[0];
     const scaleY = canvasHeight / modelResolution[1];
 
+    // Track detected object names
+    const detectedObjects = new Set();
+    
     let batch_id, x0, y0, x1, y1, cls_id, score;
     
     for (let i = 0; i < tensor.dims[0]; i++) {
@@ -169,6 +182,9 @@ export class PostProcessor {
       const className = yoloClasses[cls_id];
       const label = className.charAt(0).toUpperCase() + className.substring(1) + ' ' + score + '%';
       const color = conf2color(score / 100);
+      
+      // Add to detected objects set
+      detectedObjects.add(className);
 
       // Responsive styling based on canvas size
       const lineWidth = Math.max(1, Math.round(canvasWidth / 300));
@@ -191,6 +207,9 @@ export class PostProcessor {
       ctx.fillStyle = color.replace(')', ', 0.15)').replace('rgb', 'rgba');
       ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
     }
+    
+    // Return array of detected object names
+    return Array.from(detectedObjects);
   }
 
   /*

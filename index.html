@@ -34,6 +34,13 @@
                 <div id="loading" class="loading-overlay" aria-live="polite">Loading...</div>
             </div>
             
+            <section class="detection-log" aria-label="Detection Log">
+                <h3 class="log-title">Objects Detected</h3>
+                <ul id="detection-list" class="detection-list" aria-live="polite">
+                    <li class="no-detections">No objects detected yet</li>
+                </ul>
+            </section>
+            
             <aside class="controls-container" aria-label="Detection Controls">
                 <div class="button-group" role="group" aria-label="Detection Actions">
                     <button id="capture-btn" class="control-btn" 

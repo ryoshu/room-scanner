@@ -20,6 +20,9 @@ class ObjectDetectionApp {
     this.inferenceTime = 0;
     this.totalTime = 0;
     
+    // Detection log tracking
+    this.detectedObjects = new Set();
+    
     // Debouncing states
     this.isSwitchingCamera = false;
     this.isCapturing = false;
@@ -42,7 +45,8 @@ class ObjectDetectionApp {
         captureBtn: document.getElementById('capture-btn'),
         liveBtn: document.getElementById('live-btn'),
         switchCameraBtn: document.getElementById('switch-camera-btn'),
-        resetBtn: document.getElementById('reset-btn')
+        resetBtn: document.getElementById('reset-btn'),
+        detectionList: document.getElementById('detection-list')
       };
       
       // Set up unified loader progress callback
@@ -176,7 +180,7 @@ class ObjectDetectionApp {
         : null;
       */
       
-      this.postProcessor.postprocess(
+      const detectedObjectNames = this.postProcessor.postprocess(
         outputTensor,
         inferenceTime,
         overlayCtx,
@@ -186,6 +190,11 @@ class ObjectDetectionApp {
         displayDimensions
         /* yoloWorldConfig */
       );
+      
+      // Update detection log with newly detected objects
+      if (detectedObjectNames && detectedObjectNames.length > 0) {
+        this.updateDetectionLog(detectedObjectNames);
+      }
     }
   }
 
@@ -263,6 +272,63 @@ class ObjectDetectionApp {
     this.camera.reset();
     this.inferenceTime = 0;
     this.totalTime = 0;
+    this.clearDetectionLog();
+  }
+
+  /**
+   * Update the detection log with newly detected objects
+   */
+  updateDetectionLog(detectedObjectNames) {
+    let newObjectsAdded = false;
+    
+    // Add new objects to the set
+    for (const objectName of detectedObjectNames) {
+      if (!this.detectedObjects.has(objectName)) {
+        this.detectedObjects.add(objectName);
+        newObjectsAdded = true;
+      }
+    }
+    
+    // Update the UI if new objects were added
+    if (newObjectsAdded) {
+      this.renderDetectionLog();
+    }
+  }
+
+  /**
+   * Render the detection log in the UI
+   */
+  renderDetectionLog() {
+    if (!this.elements.detectionList) return;
+    
+    // Clear existing content
+    this.elements.detectionList.innerHTML = '';
+    
+    if (this.detectedObjects.size === 0) {
+      // Show "no detections" message
+      const noDetectionsItem = document.createElement('li');
+      noDetectionsItem.className = 'no-detections';
+      noDetectionsItem.textContent = 'No objects detected yet';
+      this.elements.detectionList.appendChild(noDetectionsItem);
+    } else {
+      // Create list items for each detected object
+      const sortedObjects = Array.from(this.detectedObjects).sort();
+      for (const objectName of sortedObjects) {
+        const listItem = document.createElement('li');
+        listItem.className = 'detection-item';
+        listItem.textContent = objectName;
+        listItem.setAttribute('title', `Detected: ${objectName}`);
+        this.elements.detectionList.appendChild(listItem);
+      }
+    }
+  }
+
+  /**
+   * Clear the detection log
+   */
+  clearDetectionLog() {
+    this.detectedObjects.clear();
+    this.renderDetectionLog();
   }
 
   /**

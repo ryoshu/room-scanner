@@ -93,6 +93,63 @@ body {
     line-height: 1.2;
 }
 
+/* Detection log styling */
+.detection-log {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+    padding: var(--space-md);
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: clamp(8px, 2vw, 12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.log-title {
+    font-size: var(--text-base);
+    font-weight: bold;
+    margin-bottom: var(--space-sm);
+    text-align: center;
+    color: #fff;
+}
+
+.detection-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    justify-content: center;
+    min-height: 2rem;
+    align-items: center;
+}
+
+.detection-item {
+    background-color: rgba(0, 255, 136, 0.2);
+    color: #00ff88;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: clamp(4px, 1vw, 6px);
+    border: 1px solid #00ff88;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-transform: capitalize;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.detection-item:hover {
+    background-color: rgba(0, 255, 136, 0.3);
+    transform: translateY(-1px);
+}
+
+.no-detections {
+    color: rgba(255, 255, 255, 0.6);
+    font-style: italic;
+    font-size: var(--text-sm);
+    text-align: center;
+    width: 100%;
+}
+
 /* Detection container - Mobile First Layout */
 .detection-container {
     display: grid;
