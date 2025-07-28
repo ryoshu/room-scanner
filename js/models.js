@@ -20,6 +20,10 @@ export class ModelManager {
     this.loadedModels = new Map(); // Cache for loaded models
     this.fallbackAttempted = false;
     
+    // Progress tracking
+    this.progressCallback = null;
+    this.loadingProgress = 0;
+    
     // YOLO-World specific properties - commented out
     /*
     this.currentPrompts = [...defaultPrompts];
@@ -48,32 +52,84 @@ export class ModelManager {
     
     try {
       this.isLoading = true;
+      this.loadingProgress = 0;
       console.log(`🚀 Loading model: ${config.filename}`);
+      
+      // First, silently verify if the model is available for download
+      console.log(`🔍 Checking model availability...`);
       
       // Check if model is already cached
       const cacheKey = config.filename;
       if (this.loadedModels.has(cacheKey)) {
         console.log(`📋 Using cached model: ${config.filename}`);
+        // For cached models, show progress briefly then complete
+        this.updateProgress(0, 'Loading from cache...');
+        setTimeout(() => this.updateProgress(100, 'Model loaded from cache'), 100);
         this.currentSession = this.loadedModels.get(cacheKey);
         return this.currentSession;
       }
       
-      // Get model URL with CDN-first, local fallback strategy
-      const modelUrl = await this.assetManager.loadAsset('models', config.filename, {
+      // Verify asset availability first (this determines if we show progress)
+      const verification = await this.assetManager.verifyAssetAvailability('models', config.filename, {
         expectedSize: config.expectedSize
       });
       
-      console.log(`📦 Model URL resolved: ${modelUrl}`);
+      // Only start showing progress if this is a downloadable asset
+      if (verification.isDownloadable) {
+        this.updateProgress(0, 'Starting model download...');
+        this.updateProgress(5, 'Connecting to server...');
+      } else {
+        // For local files, show minimal progress
+        this.updateProgress(0, 'Loading local model...');
+      }
+      
+      console.log(`📦 Model URL resolved: ${verification.url}`);
       console.log(`⚙️ Creating ONNX session...`);
       
       // Set ONNX Runtime configuration  
       ort.env.wasm.wasmPaths = './js/';
       
-      // Create ONNX inference session
-      this.currentSession = await ort.InferenceSession.create(modelUrl, {
-        executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all',
-      });
+      let modelData;
+      
+      if (verification.isDownloadable) {
+        this.updateProgress(10, 'Downloading model...');
+        
+        // Download with real progress tracking
+        modelData = await this.assetManager.loadAsset('models', config.filename, {
+          expectedSize: config.expectedSize,
+          downloadWithProgress: true,
+          onProgress: (progress, received, total) => {
+            // Map download progress to 10-70% of total progress
+            const mappedProgress = 10 + (progress * 0.6);
+            const mbReceived = (received / 1024 / 1024).toFixed(1);
+            const mbTotal = (total / 1024 / 1024).toFixed(1);
+            this.updateProgress(mappedProgress, `Downloading model... ${mbReceived}MB / ${mbTotal}MB`);
+          }
+        });
+        
+        this.updateProgress(75, 'Download complete, initializing model...');
+        
+        // Create ONNX session from downloaded data
+        this.currentSession = await ort.InferenceSession.create(modelData, {
+          executionProviders: ['wasm'],
+          graphOptimizationLevel: 'all',
+        });
+      } else {
+        // For local files, load without detailed progress
+        this.updateProgress(50, 'Loading model...');
+        modelData = await this.assetManager.loadAsset('models', config.filename, {
+          expectedSize: config.expectedSize
+        });
+        
+        this.currentSession = await ort.InferenceSession.create(modelData, {
+          executionProviders: ['wasm'],
+          graphOptimizationLevel: 'all',
+        });
+      }
+      
+      if (verification.isDownloadable) {
+        this.updateProgress(90, 'Finalizing model setup...');
+      }
       
       // Check memory pressure before caching
       this.manageMemoryPressure();
@@ -86,6 +142,7 @@ export class ModelManager {
       this.isYoloWorld = config.isYoloWorld;
       */
       
+      this.updateProgress(100, 'Model loaded successfully!');
       console.log(`✅ Model loaded successfully: ${config.filename}`);
       console.log('📥 Input names:', this.currentSession.inputNames);
       console.log('📤 Output names:', this.currentSession.outputNames);
@@ -117,6 +174,7 @@ export class ModelManager {
       throw new Error(errorMessage);
     } finally {
       this.isLoading = false;
+      this.loadingProgress = 100;
     }
   }
 
@@ -173,15 +231,6 @@ export class ModelManager {
     return smallestIndex;
   }
 
-  async switchToNextModel() {
-    // Move to next model in the array
-    this.currentModelIndex = (this.currentModelIndex + 1) % this.RES_TO_MODEL.length;
-    
-    // Load the new model
-    await this.loadCurrentModel();
-    
-    return this.getCurrentModelConfig();
-  }
 
   async runInference(preprocessedData) {
     if (!this.currentSession) {
@@ -277,6 +326,33 @@ export class ModelManager {
       }
     }
     return false;
+  }
+
+  /**
+   * Set progress callback for loading updates
+   */
+  setProgressCallback(callback) {
+    this.progressCallback = callback;
+  }
+
+  /**
+   * Update loading progress (only if callback is set)
+   */
+  updateProgress(percentage, message) {
+    this.loadingProgress = Math.max(0, Math.min(100, percentage));
+    if (this.progressCallback) {
+      this.progressCallback(this.loadingProgress, message);
+    }
+  }
+
+
+  // Removed createSessionWithProgress - now using real download progress
+
+  /**
+   * Get current loading progress
+   */
+  getLoadingProgress() {
+    return this.loadingProgress;
   }
 
   /**

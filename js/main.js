@@ -4,6 +4,7 @@ import { ModelManager } from './models.js';
 import { InferenceEngine } from './inference.js';
 import { PostProcessor } from './postprocess.js';
 import { DependencyLoader } from './dependencyLoader.js';
+import { UnifiedAssetLoader } from './unifiedLoader.js';
 
 class ObjectDetectionApp {
   constructor() {
@@ -12,6 +13,7 @@ class ObjectDetectionApp {
     this.modelManager = new ModelManager();
     this.inferenceEngine = new InferenceEngine();
     this.postProcessor = new PostProcessor();
+    this.unifiedLoader = new UnifiedAssetLoader();
     
     this.isLiveDetection = false;
     this.animationId = null;
@@ -19,9 +21,9 @@ class ObjectDetectionApp {
     this.totalTime = 0;
     
     // Debouncing states
-    this.isChangingModel = false;
     this.isSwitchingCamera = false;
     this.isCapturing = false;
+    this.isLoading = false;
     
     this.elements = {};
   }
@@ -33,12 +35,14 @@ class ObjectDetectionApp {
         video: document.getElementById('webcam'),
         canvas: document.getElementById('detection-canvas'),
         loading: document.getElementById('loading'),
+        modelLoading: document.getElementById('model-loading'),
+        loadingProgress: document.getElementById('loading-progress'),
+        loadingPercentage: document.getElementById('loading-percentage'),
+        loadingDetails: document.getElementById('loading-details'),
         captureBtn: document.getElementById('capture-btn'),
         liveBtn: document.getElementById('live-btn'),
         switchCameraBtn: document.getElementById('switch-camera-btn'),
-        changeModelBtn: document.getElementById('change-model-btn'),
         resetBtn: document.getElementById('reset-btn'),
-        currentModel: document.getElementById('current-model'),
         modelInferenceTime: document.getElementById('model-inference-time'),
         totalTime: document.getElementById('total-time'),
         overheadTime: document.getElementById('overhead-time'),
@@ -46,26 +50,44 @@ class ObjectDetectionApp {
         totalFps: document.getElementById('total-fps'),
         overheadFps: document.getElementById('overhead-fps')
       };
-
-      // Load dependencies with fallback strategy
-      console.log('🚀 Loading dependencies...');
-      this.elements.loading.textContent = 'Loading dependencies...';
-      await this.dependencyLoader.loadOnnxRuntime();
       
-      // Initialize camera
-      this.elements.loading.textContent = 'Initializing camera...';
+      // Set up unified loader progress callback
+      this.unifiedLoader.setProgressCallback((progress, message) => {
+        this.updateLoadingProgress(progress, message);
+      });
+
+      // Start loading sequence
+      this.isLoading = true;
+      this.disableAllButtons();
+      this.showModelLoadingBar();
+      
+      console.log('🚀 Starting unified asset loading...');
+      
+      // Load ONNX Runtime with progress
+      await this.unifiedLoader.loadOnnxRuntime();
+      
+      // Initialize camera (no progress needed)
       await this.camera.initialize(this.elements.video, this.elements.canvas);
       
-      // Load initial model
-      this.elements.loading.textContent = 'Loading AI model...';
-      await this.modelManager.loadCurrentModel();
-      this.updateModelDisplay();
+      // Load initial model with progress
+      const config = this.modelManager.getCurrentModelConfig();
+      const modelData = await this.unifiedLoader.loadModel(config.filename, config.expectedSize);
+      
+      // Create ONNX session from loaded data
+      await this.createOnnxSession(modelData, config);
       
       // Set up event listeners
       this.setupEventListeners();
       
-      // Hide loading
-      this.elements.loading.style.display = 'none';
+      // Finish loading
+      this.isLoading = false;
+      this.enableAllButtons();
+      this.hideModelLoadingBar();
+      this.hideLoadingOverlay();
+      
+      // Clean up progress tracking
+      this.lastProgress = undefined;
+      this.lastMessage = '';
       
       console.log('✅ Application initialized successfully');
       this.logDependencyStatus();
@@ -91,12 +113,6 @@ class ObjectDetectionApp {
       await this.switchCamera();
     });
 
-    // Change model button
-    /*
-    this.elements.changeModelBtn.addEventListener('click', async () => {
-      await this.changeModel();
-    });
-    */
 
     // Reset button
     this.elements.resetBtn.addEventListener('click', () => {
@@ -112,7 +128,7 @@ class ObjectDetectionApp {
   }
 
   async capturePhoto() {
-    if (!this.camera.isReady() || this.isCapturing) return;
+    if (!this.camera.isReady() || this.isCapturing || this.isLoading) return;
 
     try {
       this.isCapturing = true;
@@ -189,7 +205,7 @@ class ObjectDetectionApp {
   }
 
   startLiveDetection() {
-    if (!this.camera.isReady() || this.isLiveDetection) return;
+    if (!this.camera.isReady() || this.isLiveDetection || this.isLoading) return;
 
     this.isLiveDetection = true;
     this.elements.liveBtn.textContent = 'Stop Live Detection';
@@ -230,7 +246,7 @@ class ObjectDetectionApp {
   }
 
   async switchCamera() {
-    if (this.isSwitchingCamera) return;
+    if (this.isSwitchingCamera || this.isLoading) return;
 
     try {
       this.isSwitchingCamera = true;
@@ -249,29 +265,6 @@ class ObjectDetectionApp {
     }
   }
 
-  async changeModel() {
-    if (this.isChangingModel) return;
-
-    try {
-      this.isChangingModel = true;
-      this.elements.changeModelBtn.disabled = true;
-      this.elements.changeModelBtn.textContent = 'Loading...';
-      
-      this.reset();
-      this.elements.currentModel.textContent = 'Loading...';
-      
-      await this.modelManager.switchToNextModel();
-      this.updateModelDisplay();
-    } catch (error) {
-      console.error('Failed to change model:', error);
-      this.showError('Failed to change model: ' + error.message);
-      this.updateModelDisplay(); // Restore previous model name
-    } finally {
-      this.isChangingModel = false;
-      this.elements.changeModelBtn.disabled = false;
-      this.elements.changeModelBtn.textContent = 'Change Model';
-    }
-  }
 
   reset() {
     this.stopLiveDetection();
@@ -281,10 +274,6 @@ class ObjectDetectionApp {
     this.updatePerformanceMetrics();
   }
 
-  updateModelDisplay() {
-    const config = this.modelManager.getCurrentModelConfig();
-    this.elements.currentModel.textContent = config.name;
-  }
 
   updatePerformanceMetrics() {
     // Update time metrics
@@ -302,6 +291,219 @@ class ObjectDetectionApp {
     this.elements.modelFps.textContent = `Model FPS: ${modelFps}fps`;
     this.elements.totalFps.textContent = `Total FPS: ${totalFps}fps`;
     this.elements.overheadFps.textContent = `Overhead FPS: ${overheadFps}fps`;
+  }
+
+  updateLoadingProgress(percentage, message) {
+    // Always update the message
+    if (this.elements.loadingDetails) {
+      this.elements.loadingDetails.textContent = message;
+    }
+    
+    // Only update progress bar if it's active
+    if (this.loadingBarActive) {
+      if (this.elements.loadingProgress) {
+        this.elements.loadingProgress.style.width = `${percentage}%`;
+      }
+      if (this.elements.loadingPercentage) {
+        this.elements.loadingPercentage.textContent = `${Math.round(percentage)}%`;
+      }
+    }
+  }
+
+  showLoadingOverlay() {
+    if (this.elements.loading) {
+      this.elements.loading.style.display = 'block';
+      this.elements.loading.style.opacity = '1';
+    }
+  }
+
+  showLoadingBar() {
+    this.loadingBarActive = true;
+    if (this.elements.loadingProgress && this.elements.loadingPercentage) {
+      this.elements.loadingProgress.parentElement.style.display = 'flex';
+      this.elements.loadingPercentage.style.display = 'block';
+    }
+  }
+
+  hideLoadingBar() {
+    this.loadingBarActive = false;
+    if (this.elements.loadingProgress && this.elements.loadingPercentage) {
+      this.elements.loadingProgress.parentElement.style.display = 'none';
+      this.elements.loadingPercentage.style.display = 'none';
+    }
+  }
+
+  hideLoadingOverlay() {
+    if (this.elements.loading) {
+      // Reset progress callback when hiding
+      this.modelManager.setProgressCallback(null);
+      this.loadingBarActive = false;
+      
+      // Add fade out animation
+      this.elements.loading.style.transition = 'opacity 0.5s ease-out';
+      this.elements.loading.style.opacity = '0';
+      
+      // Hide completely after animation
+      setTimeout(() => {
+        this.elements.loading.style.display = 'none';
+        this.elements.loading.style.transition = '';
+      }, 500);
+    }
+  }
+
+  /**
+   * Create ONNX session from model data
+   */
+  async createOnnxSession(modelData, config) {
+    // Set ONNX Runtime configuration  
+    ort.env.wasm.wasmPaths = './js/';
+    
+    // Create session from data or URL
+    this.modelManager.currentSession = await ort.InferenceSession.create(modelData, {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all',
+    });
+    
+    // Cache the session
+    this.modelManager.loadedModels.set(config.filename, this.modelManager.currentSession);
+    
+    console.log(`✅ Model loaded successfully: ${config.filename}`);
+    console.log('📥 Input names:', this.modelManager.currentSession.inputNames);
+    console.log('📤 Output names:', this.modelManager.currentSession.outputNames);
+  }
+
+  /**
+   * Update loading progress in model info area (optimized)
+   */
+  updateLoadingProgress(percentage, message) {
+    // Cache last values to avoid unnecessary DOM updates
+    if (this.lastProgress === undefined) {
+      this.lastProgress = -1;
+      this.lastMessage = '';
+    }
+    
+    const roundedPercentage = Math.round(percentage);
+    
+    // Only update if values actually changed
+    if (roundedPercentage !== this.lastProgress || message !== this.lastMessage) {
+      // Batch DOM updates in next frame
+      requestAnimationFrame(() => {
+        if (this.elements.loadingDetails && message !== this.lastMessage) {
+          this.elements.loadingDetails.textContent = message;
+        }
+        if (this.elements.loadingProgress && roundedPercentage !== this.lastProgress) {
+          this.elements.loadingProgress.style.width = `${percentage}%`;
+        }
+        if (this.elements.loadingPercentage && roundedPercentage !== this.lastProgress) {
+          this.elements.loadingPercentage.textContent = `${roundedPercentage}%`;
+        }
+      });
+      
+      this.lastProgress = roundedPercentage;
+      this.lastMessage = message;
+    }
+  }
+
+  /**
+   * Show/hide loading states
+   */
+  showLoadingOverlay() {
+    if (this.elements.loading) {
+      this.elements.loading.style.display = 'block';
+      this.elements.loading.style.opacity = '1';
+    }
+  }
+
+  showModelLoadingBar() {
+    if (this.elements.modelLoading) {
+      this.elements.modelLoading.style.display = 'block';
+    }
+  }
+
+  hideModelLoadingBar() {
+    if (this.elements.modelLoading) {
+      this.elements.modelLoading.style.display = 'none';
+    }
+  }
+
+  hideLoadingOverlay() {
+    if (this.elements.loading) {
+      this.elements.loading.style.transition = 'opacity 0.5s ease-out';
+      this.elements.loading.style.opacity = '0';
+      
+      setTimeout(() => {
+        this.elements.loading.style.display = 'none';
+        this.elements.loading.style.transition = '';
+      }, 500);
+    }
+  }
+
+  /**
+   * Optimized button state management
+   */
+  disableAllButtons() {
+    if (!this.buttonElements) {
+      // Cache button elements for performance
+      this.buttonElements = [
+        this.elements.captureBtn,
+        this.elements.liveBtn,
+        this.elements.switchCameraBtn,
+        this.elements.resetBtn
+      ].filter(Boolean); // Remove null/undefined elements
+    }
+    
+    // Use requestAnimationFrame to batch DOM updates
+    requestAnimationFrame(() => {
+      this.buttonElements.forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+      });
+    });
+  }
+
+  enableAllButtons() {
+    if (!this.buttonElements) return; // Safety check
+    
+    // Use requestAnimationFrame to batch DOM updates
+    requestAnimationFrame(() => {
+      this.buttonElements.forEach(btn => {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+      });
+    });
+  }
+
+  /**
+   * Cleanup resources to prevent memory leaks
+   */
+  cleanup() {
+    // Stop any ongoing live detection
+    this.stopLiveDetection();
+    
+    // Clean up camera resources
+    if (this.camera) {
+      this.camera.reset();
+    }
+    
+    // Clean up model resources
+    if (this.modelManager && this.modelManager.currentSession) {
+      // ONNX sessions are automatically cleaned up by the runtime
+      this.modelManager.currentSession = null;
+    }
+    
+    // Clean up unified loader
+    if (this.unifiedLoader) {
+      this.unifiedLoader.cleanup();
+    }
+    
+    // Reset progress tracking
+    this.lastProgress = undefined;
+    this.lastMessage = '';
+    this.buttonElements = null;
+    
+    console.log('🧹 Application resources cleaned up');
   }
 
   logDependencyStatus() {

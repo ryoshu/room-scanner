@@ -25,11 +25,149 @@ export class AssetManager {
   }
 
   /**
+   * Verify if asset is available for download before showing loading UI
+   * @param {string} assetType - 'models' or 'onnxRuntime'
+   * @param {string} filename - Asset filename
+   * @param {Object} options - Loading options
+   * @returns {Promise<{url: string, source: string, isDownloadable: boolean}>}
+   */
+  async verifyAssetAvailability(assetType, filename, options = {}) {
+    const attemptKey = `${assetType}:${filename}`;
+    
+    // Check cache first
+    if (this.loadAttempts.has(attemptKey)) {
+      const previousAttempt = this.loadAttempts.get(attemptKey);
+      if (previousAttempt.success) {
+        return {
+          url: previousAttempt.url,
+          source: previousAttempt.source,
+          isDownloadable: !previousAttempt.url.startsWith('./')
+        };
+      }
+    }
+
+    const urls = this.getAssetUrls(assetType, filename);
+    
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      const source = i === 0 ? 'CDN' : 'Local';
+      const isLocal = url.startsWith('./') || url.startsWith('/');
+      
+      try {
+        console.log(`🔍 Verifying ${assetType}/${filename} from ${source}: ${url}`);
+        
+        // For local files, assume they exist (can't verify without download)
+        if (isLocal) {
+          console.log(`✅ Local ${assetType}/${filename} assumed available`);
+          return {
+            url,
+            source,
+            isDownloadable: false // Local files don't need download progress
+          };
+        }
+        
+        // For CDN files, verify with HEAD request
+        const success = await this.checkAssetHead(url, options);
+        
+        if (success) {
+          console.log(`✅ CDN ${assetType}/${filename} verified available`);
+          return {
+            url,
+            source,
+            isDownloadable: true // CDN files show download progress
+          };
+        }
+        
+      } catch (error) {
+        console.warn(`❌ Failed to verify ${assetType}/${filename} from ${source}:`, error.message);
+      }
+    }
+    
+    throw new Error(`No available source found for ${assetType}/${filename}`);
+  }
+
+  /**
+   * Download asset with real progress tracking
+   * @param {string} url - Asset URL to download
+   * @param {Object} options - Download options
+   * @returns {Promise<ArrayBuffer>} - Downloaded asset data
+   */
+  async downloadAssetWithProgress(url, options = {}) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout * 3); // Longer timeout for downloads
+    
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        cache: 'force-cache',
+        headers: {
+          'Accept': 'application/octet-stream, */*',
+          'Cache-Control': 'max-age=3600'
+        },
+        ...options.fetchOptions
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const contentLength = parseInt(response.headers.get('content-length') || '0');
+      const reader = response.body?.getReader();
+      
+      if (!reader || contentLength === 0) {
+        // Fallback for streams without progress
+        clearTimeout(timeoutId);
+        return await response.arrayBuffer();
+      }
+      
+      // Track download progress
+      const chunks = [];
+      let receivedLength = 0;
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        chunks.push(value);
+        receivedLength += value.length;
+        
+        // Report progress
+        if (options.onProgress && contentLength > 0) {
+          const progress = (receivedLength / contentLength) * 100;
+          options.onProgress(progress, receivedLength, contentLength);
+        }
+      }
+      
+      clearTimeout(timeoutId);
+      
+      // Combine chunks into single ArrayBuffer
+      const allChunks = new Uint8Array(receivedLength);
+      let position = 0;
+      for (const chunk of chunks) {
+        allChunks.set(chunk, position);
+        position += chunk.length;
+      }
+      
+      return allChunks.buffer;
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new Error(`Download timeout after ${this.timeout * 3}ms`);
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
    * Load asset with CDN-first, local fallback strategy
    * @param {string} assetType - 'models' or 'onnxRuntime'
    * @param {string} filename - Asset filename
    * @param {Object} options - Loading options
-   * @returns {Promise<string>} - Final asset URL that worked
+   * @returns {Promise<string|ArrayBuffer>} - Final asset URL or data
    */
   async loadAsset(assetType, filename, options = {}) {
     const attemptKey = `${assetType}:${filename}`;
@@ -63,11 +201,26 @@ export class AssetManager {
             timestamp: Date.now()
           });
           
-          return url;
+          return url; // Return URL for local files
         }
         
-        // For CDN files, verify availability
-        const success = await this.verifyAssetAvailability(url, options);
+        // For CDN files, download with progress if requested
+        if (options.downloadWithProgress && options.onProgress) {
+          console.log(`📋 Downloading ${assetType}/${filename} with progress tracking`);
+          const data = await this.downloadAssetWithProgress(url, options);
+          
+          this.loadAttempts.set(attemptKey, {
+            url,
+            source,
+            success: true,
+            timestamp: Date.now()
+          });
+          
+          return data; // Return ArrayBuffer for CDN files with progress
+        }
+        
+        // For CDN files without progress, verify availability
+        const success = await this.verifyAssetAvailabilityLegacy(url, options);
         
         if (success) {
           console.log(`✅ Successfully verified ${assetType}/${filename} from ${source}`);
@@ -79,7 +232,7 @@ export class AssetManager {
             timestamp: Date.now()
           });
           
-          return url;
+          return url; // Return URL for CDN files without progress
         }
         
       } catch (error) {
@@ -115,9 +268,61 @@ export class AssetManager {
   }
 
   /**
-   * Verify asset availability and size
+   * Check asset availability with HEAD request
    */
-  async verifyAssetAvailability(url, options = {}) {
+  async checkAssetHead(url, options = {}) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    
+    try {
+      const response = await fetch(url, {
+        method: 'HEAD',
+        signal: controller.signal,
+        cache: 'force-cache',
+        headers: {
+          'Accept': 'application/octet-stream, */*',
+          'Cache-Control': 'max-age=3600'
+        },
+        ...options.fetchOptions
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      // Check content length if specified
+      if (options.expectedSize) {
+        const contentLength = parseInt(response.headers.get('content-length') || '0');
+        const tolerance = options.sizeTolerance || 0.1;
+        
+        if (contentLength > 0) {
+          const sizeDiff = Math.abs(contentLength - options.expectedSize) / options.expectedSize;
+          if (sizeDiff > tolerance) {
+            console.warn(`⚠️ Size difference detected: expected ~${options.expectedSize}, got ${contentLength} (${(sizeDiff * 100).toFixed(1)}% difference)`);
+            // Don't fail on size mismatch for CDN, just warn
+          }
+        }
+      }
+      
+      return true;
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new Error(`Request timeout after ${this.timeout}ms`);
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Verify asset availability and size (legacy method)
+   */
+  async verifyAssetAvailabilityLegacy(url, options = {}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
     

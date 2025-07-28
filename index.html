@@ -45,14 +45,18 @@
                 <div class="button-group" role="group" aria-label="Settings">
                     <button id="switch-camera-btn" class="control-btn" 
                             aria-describedby="camera-help">Switch Camera</button>
-                    <!-- button id="change-model-btn" class="control-btn" 
-                            aria-describedby="model-help">Change Model</button -->
                     <button id="reset-btn" class="control-btn" 
                             aria-describedby="reset-help">Reset</button>
                 </div>
                 
-                <div id="model-info" class="model-info" aria-live="polite">
-                    Using <span id="current-model">Loading...</span>
+                <div id="model-loading" class="model-loading" style="display: none;">
+                    <div class="loading-bar-container">
+                        <div id="loading-bar" class="loading-bar">
+                            <div id="loading-progress" class="loading-progress"></div>
+                        </div>
+                        <div id="loading-percentage" class="loading-percentage">0%</div>
+                    </div>
+                    <div id="loading-details" class="loading-details">Initializing...</div>
                 </div>
                 
                 <div class="performance-metrics" aria-label="Performance Statistics">
@@ -74,7 +78,6 @@
                 <div id="capture-help">Take a single photo for object detection</div>
                 <div id="live-help">Toggle continuous real-time object detection</div>
                 <div id="camera-help">Switch between front and back camera</div>
-                <!-- div id="model-help">Cycle through different YOLO detection models</div -->
                 <div id="reset-help">Clear all detections and stop processing</div>
             </div>
         </section>
