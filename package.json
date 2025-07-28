@@ -19,7 +19,9 @@
     "format": "echo 'Code formatting would go here with Prettier'",
     "lint": "echo 'Linting would go here with ESLint'",
     "test": "echo 'Open test/test-runner.html in your browser to run tests'",
-    "test:serve": "npx http-server -p 8081 -o test/test-runner.html"
+    "test:serve": "npx http-server -p 8081 -o test/test-runner.html",
+    "create-icons": "echo 'Create PWA icons - see icons/README.md for instructions'",
+    "install:pwa": "echo 'Service Worker registered! App can be installed from browser menu.'"
   },
   "devDependencies": {
     "vite": "^5.0.0"

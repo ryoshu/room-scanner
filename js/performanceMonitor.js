@@ -15,6 +15,14 @@ export class PerformanceMonitor {
       memoryUsage: 0
     };
     
+    // Cache metrics from service worker
+    this.cacheStats = {
+      staticAssets: 0,
+      modelsCount: 0,
+      totalSize: 0,
+      hitRate: 0
+    };
+    
     this.frameHistory = [];
     this.maxHistorySize = 60; // Keep last 60 frames
     this.lastUpdateTime = 0;
@@ -190,6 +198,17 @@ export class PerformanceMonitor {
       `;
     }
     
+    // Add cache information if available
+    if (this.cacheStats && (this.cacheStats.staticAssets > 0 || this.cacheStats.modelsCount > 0)) {
+      html += `
+        <div style="margin-top: 5px; border-top: 1px solid #333; padding-top: 5px;">
+          <div style="font-weight: bold;">📱 PWA Cache</div>
+          <div>Static: ${this.cacheStats.staticAssets} files</div>
+          <div>Models: ${this.cacheStats.modelsCount} cached</div>
+        </div>
+      `;
+    }
+    
     this.displayElement.innerHTML = html;
   }
 
@@ -216,7 +235,8 @@ export class PerformanceMonitor {
       totalFrames: metrics.frameCount,
       runtimeSeconds: runtime,
       averageInferenceTime: this.getAverageInferenceTime(),
-      memoryUsage: metrics.memoryUsage
+      memoryUsage: metrics.memoryUsage,
+      cacheStats: this.cacheStats
     };
   }
 

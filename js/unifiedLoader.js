@@ -1,15 +1,19 @@
-// Unified Asset Loader with Real Progress Tracking
+// Unified Asset Loader with Real Progress Tracking and Service Worker Support
 import { CONSTANTS } from './constants.js';
 import { logger } from './logger.js';
 
 export class UnifiedAssetLoader {
-  constructor() {
+  constructor(serviceWorkerManager = null) {
     this.isLoading = false;
     this.progressCallback = null;
     this.totalSteps = CONSTANTS.PROGRESS_MAX;
     this.currentStep = 0;
     this.lastProgressUpdate = 0;
     this.progressThrottle = CONSTANTS.PROGRESS_THROTTLE_MS; // Throttle progress updates
+    
+    // Service Worker integration
+    this.serviceWorkerManager = serviceWorkerManager;
+    this.isServiceWorkerEnabled = !!serviceWorkerManager;
     
     // Cache for availability checks
     this.availabilityCache = new Map();
@@ -235,11 +239,63 @@ export class UnifiedAssetLoader {
   }
 
   /**
-   * Load model with progress
+   * Load model with progress and service worker caching
    */
   async loadModel(filename, expectedSize) {
     this.updateProgress(0, 'model', `Loading model: ${filename}`);
     
+    // If service worker is enabled, try to use it for caching
+    if (this.isServiceWorkerEnabled) {
+      return await this.loadModelWithServiceWorker(filename, expectedSize);
+    }
+    
+    // Fallback to original loading method
+    return await this.loadModelFallback(filename, expectedSize);
+  }
+
+  /**
+   * Load model with service worker support
+   */
+  async loadModelWithServiceWorker(filename, expectedSize) {
+    const localUrl = this.assets.models.localBaseUrl + filename;
+    
+    try {
+      this.updateProgress(5, 'model', 'Checking cache...');
+      
+      // Try to load from service worker cache (which includes local files)
+      const response = await fetch(localUrl);
+      
+      if (response.ok) {
+        // Check if response is from cache
+        const isFromCache = response.headers.get('cache-control') || 
+                           response.type === 'opaque' ||
+                           response.headers.get('sw-cache') === 'hit';
+        
+        if (isFromCache) {
+          this.updateProgress(CONSTANTS.PROGRESS_MAX, 'model', 'Model loaded from cache');
+          logger.info(`⚡ Model loaded from service worker cache: ${filename}`);
+        } else {
+          this.updateProgress(CONSTANTS.PROGRESS_MAX, 'model', 'Model loaded from local storage');
+          logger.info(`📁 Model loaded from local file: ${filename}`);
+        }
+        
+        // For URLs, let ONNX Runtime handle the loading
+        return localUrl;
+      } else {
+        throw new Error(`Model not available: ${response.status}`);
+      }
+    } catch (error) {
+      logger.warn(`Service worker model loading failed for ${filename}:`, error.message);
+      
+      // Fallback to original method
+      return await this.loadModelFallback(filename, expectedSize);
+    }
+  }
+
+  /**
+   * Original model loading method as fallback
+   */
+  async loadModelFallback(filename, expectedSize) {
     const urls = [
       this.assets.models.cdnBaseUrl + filename,
       this.assets.models.localBaseUrl + filename

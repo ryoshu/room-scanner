@@ -9,6 +9,7 @@ import { logger } from './logger.js';
 import { CONSTANTS } from './constants.js';
 import { ErrorBoundary } from './errorBoundary.js';
 import { PerformanceMonitor } from './performanceMonitor.js';
+import { ServiceWorkerManager } from './serviceWorkerManager.js';
 
 class ObjectDetectionApp {
   constructor() {
@@ -17,7 +18,10 @@ class ObjectDetectionApp {
     this.modelManager = new ModelManager();
     this.inferenceEngine = new InferenceEngine();
     this.postProcessor = new PostProcessor();
-    this.unifiedLoader = new UnifiedAssetLoader();
+    
+    // Initialize service worker manager
+    this.serviceWorkerManager = new ServiceWorkerManager();
+    this.unifiedLoader = new UnifiedAssetLoader(this.serviceWorkerManager);
     
     this.isLiveDetection = false;
     this.animationId = null;
@@ -61,8 +65,29 @@ class ObjectDetectionApp {
         liveBtn: document.getElementById('live-btn'),
         switchCameraBtn: document.getElementById('switch-camera-btn'),
         resetBtn: document.getElementById('reset-btn'),
-        detectionList: document.getElementById('detection-list')
+        detectionList: document.getElementById('detection-list'),
+        
+        // Cache UI elements
+        cacheStatus: document.getElementById('cache-status'),
+        cacheClose: document.getElementById('cache-close'),
+        swStatus: document.getElementById('sw-status'),
+        offlineStatus: document.getElementById('offline-status'),
+        modelsCached: document.getElementById('models-cached'),
+        cacheSize: document.getElementById('cache-size'),
+        clearCacheBtn: document.getElementById('clear-cache-btn'),
+        updateCacheBtn: document.getElementById('update-cache-btn')
       };
+      
+      // Initialize service worker first
+      logger.info('🔧 Initializing Service Worker...');
+      const swInitialized = await this.serviceWorkerManager.initialize();
+      
+      if (swInitialized) {
+        this.setupServiceWorkerCallbacks();
+        logger.info('✅ Service Worker initialized successfully');
+      } else {
+        logger.warn('⚠️ Service Worker initialization failed - continuing without PWA features');
+      }
       
       // Set up unified loader progress callback
       this.unifiedLoader.setProgressCallback((progress, message) => {
@@ -91,6 +116,7 @@ class ObjectDetectionApp {
       
       // Set up event listeners
       this.setupEventListeners();
+      this.setupCacheUI();
       
       // Finish loading
       this.isLoading = false;
@@ -149,6 +175,18 @@ class ObjectDetectionApp {
       // Press 'R' to reset error boundaries
       if (event.key.toLowerCase() === 'r' && event.ctrlKey) {
         this.resetErrorBoundaries();
+        event.preventDefault();
+      }
+      // Press 'S' to show service worker status
+      if (event.key.toLowerCase() === 's' && event.ctrlKey && event.shiftKey) {
+        console.log('🔧 Service Worker Status:', this.serviceWorkerManager.getStatus());
+        console.log('📱 App Status:', this.getAppStatus());
+        this.showError('Service worker status logged to console - Ctrl+Shift+S');
+        event.preventDefault();
+      }
+      // Press 'C' to toggle cache status UI
+      if (event.key.toLowerCase() === 'c' && event.ctrlKey && !event.altKey && !event.metaKey) {
+        this.toggleCacheStatus();
         event.preventDefault();
       }
     });
@@ -716,6 +754,197 @@ class ObjectDetectionApp {
     }
     logger.info('All error boundaries reset');
     this.showError('Error boundaries reset - Ctrl+R pressed');
+  }
+
+  /**
+   * Set up service worker event callbacks
+   */
+  setupServiceWorkerCallbacks() {
+    // Handle app updates
+    this.serviceWorkerManager.onUpdateAvailable = () => {
+      logger.info('🔄 App update available');
+      this.serviceWorkerManager.showUpdateNotification();
+    };
+
+    // Handle offline ready state
+    this.serviceWorkerManager.onOfflineReady = () => {
+      logger.info('🔒 App is ready for offline use');
+      this.serviceWorkerManager.showOfflineReadyNotification();
+    };
+
+    // Handle cache status changes
+    this.serviceWorkerManager.onCacheStatusChange = (cacheStats) => {
+      logger.debug('📊 Cache status updated:', cacheStats);
+      
+      // Update performance monitor if available
+      if (this.performanceMonitor) {
+        this.performanceMonitor.cacheStats = cacheStats;
+      }
+    };
+  }
+
+  /**
+   * Get comprehensive app status including service worker
+   */
+  getAppStatus() {
+    return {
+      app: {
+        isLiveDetection: this.isLiveDetection,
+        isLoading: this.isLoading,
+        modelLoaded: !!this.modelManager.currentSession
+      },
+      serviceWorker: this.serviceWorkerManager.getStatus(),
+      performance: this.performanceMonitor.getMetrics(),
+      errorBoundaries: this.getErrorStats()
+    };
+  }
+
+  /**
+   * Set up cache UI event listeners
+   */
+  setupCacheUI() {
+    if (!this.elements.cacheClose || !this.elements.clearCacheBtn || !this.elements.updateCacheBtn) {
+      return; // Cache UI not available
+    }
+
+    // Close button
+    this.elements.cacheClose.addEventListener('click', () => {
+      this.hideCacheStatus();
+    });
+
+    // Clear cache button
+    this.elements.clearCacheBtn.addEventListener('click', async () => {
+      await this.clearCache();
+    });
+
+    // Update cache button
+    this.elements.updateCacheBtn.addEventListener('click', async () => {
+      await this.updateCache();
+    });
+
+    // Update cache status initially
+    this.updateCacheStatusUI();
+  }
+
+  /**
+   * Toggle cache status UI visibility
+   */
+  toggleCacheStatus() {
+    if (!this.elements.cacheStatus) return;
+
+    if (this.elements.cacheStatus.style.display === 'none' || !this.elements.cacheStatus.style.display) {
+      // this.showCacheStatus();
+      this.hideCacheStatus();
+    } else {
+      this.hideCacheStatus();
+    }
+  }
+
+  /**
+   * Show cache status UI
+   */
+  showCacheStatus() {
+    if (!this.elements.cacheStatus) return;
+
+    this.elements.cacheStatus.style.display = 'block';
+    this.updateCacheStatusUI();
+    logger.info('📱 Cache status UI shown (Press Ctrl+C to hide)');
+  }
+
+  /**
+   * Hide cache status UI
+   */
+  hideCacheStatus() {
+    if (!this.elements.cacheStatus) return;
+
+    this.elements.cacheStatus.style.display = 'none';
+    logger.info('📱 Cache status UI hidden');
+  }
+
+  /**
+   * Update cache status UI with current data
+   */
+  async updateCacheStatusUI() {
+    if (!this.serviceWorkerManager.isSupported) {
+      this.elements.swStatus.textContent = 'Not Supported';
+      this.elements.offlineStatus.textContent = 'No';
+      this.elements.modelsCached.textContent = '0';
+      this.elements.cacheSize.textContent = '0 MB';
+      return;
+    }
+
+    try {
+      const status = this.serviceWorkerManager.getStatus();
+      const cacheStats = await this.serviceWorkerManager.updateCacheStats();
+
+      // Update UI elements
+      this.elements.swStatus.textContent = status.isRegistered ? 'Active' : 'Loading...';
+      this.elements.offlineStatus.textContent = status.isOfflineReady ? 'Yes' : 'No';
+      this.elements.modelsCached.textContent = status.cacheStats.modelsCount.toString();
+      this.elements.cacheSize.textContent = `${status.estimatedCacheSize.toFixed(1)} MB`;
+
+      // Update button states
+      this.elements.clearCacheBtn.disabled = !status.isRegistered || status.cacheStats.modelsCount === 0;
+      this.elements.updateCacheBtn.disabled = !status.isRegistered;
+
+    } catch (error) {
+      logger.error('Failed to update cache status UI:', error);
+    }
+  }
+
+  /**
+   * Clear cache
+   */
+  async clearCache() {
+    if (!this.serviceWorkerManager.isSupported) return;
+
+    try {
+      this.elements.clearCacheBtn.disabled = true;
+      this.elements.clearCacheBtn.textContent = 'Clearing...';
+
+      await this.serviceWorkerManager.clearModelCache();
+      await this.updateCacheStatusUI();
+
+      this.showError('Cache cleared successfully');
+      logger.info('🗑️ Cache cleared by user');
+
+    } catch (error) {
+      logger.error('Failed to clear cache:', error);
+      this.showError('Failed to clear cache: ' + error.message);
+    } finally {
+      this.elements.clearCacheBtn.disabled = false;
+      this.elements.clearCacheBtn.textContent = 'Clear Cache';
+    }
+  }
+
+  /**
+   * Update cache (check for updates)
+   */
+  async updateCache() {
+    if (!this.serviceWorkerManager.isSupported) return;
+
+    try {
+      this.elements.updateCacheBtn.disabled = true;
+      this.elements.updateCacheBtn.textContent = 'Updating...';
+
+      await this.serviceWorkerManager.checkForUpdates();
+      await this.updateCacheStatusUI();
+
+      if (this.serviceWorkerManager.updateAvailable) {
+        this.showError('App update available - refresh to update');
+      } else {
+        this.showError('Cache is up to date');
+      }
+
+      logger.info('🔄 Cache update check completed');
+
+    } catch (error) {
+      logger.error('Failed to update cache:', error);
+      this.showError('Failed to update cache: ' + error.message);
+    } finally {
+      this.elements.updateCacheBtn.disabled = false;
+      this.elements.updateCacheBtn.textContent = 'Update Cache';
+    }
   }
 }
 

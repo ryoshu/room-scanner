@@ -17,10 +17,38 @@
     ">
     <title>Real-Time Object Detection</title>
     <link rel="stylesheet" href="styles/main.css">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#FF9500">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ObjectDetect">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="msapplication-TileColor" content="#FF9500">
+    <meta name="msapplication-tap-highlight" content="no">
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="icons/icon-128x128.png">
+    
+    <!-- Standard Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-72x72.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-72x72.png">
+    
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-square70x70logo" content="icons/icon-72x72.png">
+    <meta name="msapplication-square150x150logo" content="icons/icon-152x152.png">
+    <meta name="msapplication-wide310x150logo" content="icons/icon-384x384.png">
+    <meta name="msapplication-square310x310logo" content="icons/icon-384x384.png">
 </head>
 <body>
     <header>
-        <h1 class="app-title">Real-Time Object Detection</h1>
+        <h1 class="app-title" style="display: none;">Real-Time Object Detection</h1>
     </header>
     
     <main class="app-container" role="main">
@@ -64,6 +92,37 @@
                         <div id="loading-percentage" class="loading-percentage">0%</div>
                     </div>
                     <div id="loading-details" class="loading-details">Initializing...</div>
+                </div>
+                
+                <!-- PWA Cache Status -->
+                <div id="cache-status" class="cache-status" style="display: none;">
+                    <div class="cache-header">
+                        <span class="cache-icon">📱</span>
+                        <span class="cache-title">PWA Status</span>
+                        <button id="cache-close" class="cache-close">×</button>
+                    </div>
+                    <div class="cache-content">
+                        <div class="cache-item">
+                            <span class="cache-label">Service Worker:</span>
+                            <span id="sw-status" class="cache-value">Loading...</span>
+                        </div>
+                        <div class="cache-item">
+                            <span class="cache-label">Offline Ready:</span>
+                            <span id="offline-status" class="cache-value">No</span>
+                        </div>
+                        <div class="cache-item">
+                            <span class="cache-label">Cached Models:</span>
+                            <span id="models-cached" class="cache-value">0</span>
+                        </div>
+                        <div class="cache-item">
+                            <span class="cache-label">Cache Size:</span>
+                            <span id="cache-size" class="cache-value">0 MB</span>
+                        </div>
+                        <div class="cache-actions">
+                            <button id="clear-cache-btn" class="cache-btn">Clear Cache</button>
+                            <button id="update-cache-btn" class="cache-btn">Update Cache</button>
+                        </div>
+                    </div>
                 </div>
                 
             </aside>
