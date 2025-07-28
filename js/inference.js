@@ -1,9 +1,11 @@
 // Image preprocessing and tensor operations
+import { CONSTANTS } from './constants.js';
+
 export class InferenceEngine {
   constructor() {
     // Canvas cache for different resolutions to avoid repeated creation
     this.processingCanvasCache = new Map();
-    this.maxCacheSize = 5; // Limit cache size to prevent memory leaks
+    this.maxCacheSize = CONSTANTS.CANVAS_MAX_CACHE_SIZE; // Limit cache size to prevent memory leaks
   }
 
   // Get or create cached canvas for target dimensions
@@ -34,10 +36,10 @@ export class InferenceEngine {
     const newContext = cachedCanvas.getContext('2d', { willReadFrequently: true });
     
     // Clear previous content
-    newContext.clearRect(0, 0, targetWidth, targetHeight);
+    newContext.clearRect(CONSTANTS.FIRST_CHAR_INDEX, CONSTANTS.FIRST_CHAR_INDEX, targetWidth, targetHeight);
     
     // Draw the source canvas into the cached canvas
-    newContext.drawImage(ctx.canvas, 0, 0, targetWidth, targetHeight);
+    newContext.drawImage(ctx.canvas, CONSTANTS.FIRST_CHAR_INDEX, CONSTANTS.FIRST_CHAR_INDEX, targetWidth, targetHeight);
     
     return newContext;
   }
@@ -50,7 +52,7 @@ export class InferenceEngine {
     const resizedCtx = this.resizeCanvasContext(ctx, targetWidth, targetHeight);
     
     // Get image data
-    const imageData = resizedCtx.getImageData(0, 0, targetWidth, targetHeight);
+    const imageData = resizedCtx.getImageData(CONSTANTS.FIRST_CHAR_INDEX, CONSTANTS.FIRST_CHAR_INDEX, targetWidth, targetHeight);
     const { data, width, height } = imageData;
     
     // Convert image data to tensor format (optimized)
@@ -58,27 +60,27 @@ export class InferenceEngine {
     // Output: Float32 tensor in format [1, 3, height, width] with values 0-1
     
     const pixelCount = width * height;
-    const tensorData = new Float32Array(pixelCount * 3);
+    const tensorData = new Float32Array(pixelCount * CONSTANTS.RGB_CHANNELS);
     
     // Extract RGB channels and normalize to 0-1 (optimized loop)
     // Tensor format: [batch, channels, height, width] = [1, 3, height, width]
     const channelSize = pixelCount;
     
     // Batch process pixels for better performance
-    for (let i = 0, j = 0; i < pixelCount; i++, j += 4) {
-      const inv255 = 1 / 255; // Avoid repeated division
+    for (let i = 0, j = 0; i < pixelCount; i++, j += CONSTANTS.RGBA_STRIDE) {
+      const inv255 = 1 / CONSTANTS.PIXEL_NORMALIZATION_FACTOR; // Avoid repeated division
       
       // Process all channels in one iteration
-      tensorData[i] = data[j] * inv255;                           // R
-      tensorData[i + channelSize] = data[j + 1] * inv255;         // G  
-      tensorData[i + channelSize * 2] = data[j + 2] * inv255;     // B
+      tensorData[i] = data[j + CONSTANTS.RED_CHANNEL] * inv255;                           // R
+      tensorData[i + channelSize] = data[j + CONSTANTS.GREEN_CHANNEL] * inv255;         // G  
+      tensorData[i + channelSize * 2] = data[j + CONSTANTS.BLUE_CHANNEL] * inv255;     // B
     }
 
     // Create ONNX tensor
     const tensor = new ort.Tensor(
       'float32', 
       tensorData, 
-      [1, 3, height, width]
+      [CONSTANTS.TENSOR_BATCH_SIZE, CONSTANTS.RGB_CHANNELS, height, width]
     );
     
     return tensor;
@@ -86,8 +88,8 @@ export class InferenceEngine {
 
   // Generate color based on confidence score
   conf2color(conf) {
-    const r = Math.round(255 * (1 - conf));
-    const g = Math.round(255 * conf);
+    const r = Math.round(CONSTANTS.PIXEL_NORMALIZATION_FACTOR * (1 - conf));
+    const g = Math.round(CONSTANTS.PIXEL_NORMALIZATION_FACTOR * conf);
     return `rgb(${r},${g},0)`;
   }
 

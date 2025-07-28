@@ -1,4 +1,7 @@
 // Camera handling with getUserMedia API
+import { CONSTANTS } from './constants.js';
+import { logger } from './logger.js';
+
 export class CameraManager {
   constructor() {
     this.video = null;
@@ -46,7 +49,7 @@ export class CameraManager {
       // Final fallback: assume permission available if getUserMedia exists
       return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
     } catch (error) {
-      console.warn('Could not check camera permissions:', error);
+      logger.warn('Could not check camera permissions:', error);
       return true; // Assume permission available and let getUserMedia handle the error
     }
   }
@@ -61,8 +64,8 @@ export class CameraManager {
       const constraints = {
         video: {
           facingMode: this.facingMode,
-          width: { ideal: 640 },
-          height: { ideal: 480 }
+          width: { ideal: CONSTANTS.CAMERA_IDEAL_WIDTH },
+          height: { ideal: CONSTANTS.CAMERA_IDEAL_HEIGHT }
         },
         audio: false
       };
@@ -76,7 +79,7 @@ export class CameraManager {
         }, { once: true });
       });
     } catch (error) {
-      console.error('Error accessing camera:', error);
+      logger.error('Error accessing camera:', error);
       
       // Provide more specific error messages
       let errorMessage = 'Failed to access camera. ';
@@ -252,7 +255,7 @@ export class CameraManager {
 
   getVideoAspectRatio() {
     if (!this.video || !this.video.videoWidth || !this.video.videoHeight) {
-      return 16/9; // Default aspect ratio
+      return CONSTANTS.DEFAULT_ASPECT_RATIO; // Default aspect ratio
     }
     return this.video.videoWidth / this.video.videoHeight;
   }

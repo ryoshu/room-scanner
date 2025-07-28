@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vanilla Object Detection Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .test-pass {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .test-summary {
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-top: 20px;
+        }
+        .test-details {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Vanilla Object Detection - Unit Tests</h1>
+    
+    <div id="test-results"></div>
+    
+    <script type="module">
+        // Simple test framework
+        class SimpleTestRunner {
+            constructor() {
+                this.tests = [];
+                this.results = [];
+            }
+            
+            test(name, testFn) {
+                this.tests.push({ name, testFn });
+            }
+            
+            async run() {
+                const resultsContainer = document.getElementById('test-results');
+                let passed = 0;
+                let failed = 0;
+                
+                for (const { name, testFn } of this.tests) {
+                    try {
+                        await testFn();
+                        this.logResult(resultsContainer, name, 'PASS');
+                        passed++;
+                    } catch (error) {
+                        this.logResult(resultsContainer, name, 'FAIL', error.message);
+                        failed++;
+                    }
+                }
+                
+                this.logSummary(resultsContainer, passed, failed);
+            }
+            
+            logResult(container, testName, status, error = null) {
+                const div = document.createElement('div');
+                div.className = `test-result test-${status.toLowerCase()}`;
+                div.innerHTML = `
+                    <strong>${status}</strong>: ${testName}
+                    ${error ? `<div class="test-details">Error: ${error}</div>` : ''}
+                `;
+                container.appendChild(div);
+            }
+            
+            logSummary(container, passed, failed) {
+                const div = document.createElement('div');
+                div.className = 'test-summary';
+                div.innerHTML = `
+                    <div class="test-container">
+                        <strong>Test Summary:</strong><br>
+                        ✅ Passed: ${passed}<br>
+                        ❌ Failed: ${failed}<br>
+                        Total: ${passed + failed}
+                    </div>
+                `;
+                container.appendChild(div);
+            }
+        }
+        
+        // Test assertions
+        function assertEqual(actual, expected, message = '') {
+            if (actual !== expected) {
+                throw new Error(`${message} - Expected: ${expected}, Actual: ${actual}`);
+            }
+        }
+        
+        function assertArrayEqual(actual, expected, message = '') {
+            if (actual.length !== expected.length) {
+                throw new Error(`${message} - Array lengths differ. Expected: ${expected.length}, Actual: ${actual.length}`);
+            }
+            for (let i = 0; i < actual.length; i++) {
+                if (actual[i] !== expected[i]) {
+                    throw new Error(`${message} - Arrays differ at index ${i}. Expected: ${expected[i]}, Actual: ${actual[i]}`);
+                }
+            }
+        }
+        
+        function assertApproximateEqual(actual, expected, tolerance = 0.001, message = '') {
+            if (Math.abs(actual - expected) > tolerance) {
+                throw new Error(`${message} - Expected: ${expected} (±${tolerance}), Actual: ${actual}`);
+            }
+        }
+        
+        function assertTrue(condition, message = '') {
+            if (!condition) {
+                throw new Error(`${message} - Expected condition to be true`);
+            }
+        }
+        
+        function assertFalse(condition, message = '') {
+            if (condition) {
+                throw new Error(`${message} - Expected condition to be false`);
+            }
+        }
+        
+        // Export globals for test files
+        window.testRunner = new SimpleTestRunner();
+        window.assertEqual = assertEqual;
+        window.assertArrayEqual = assertArrayEqual;
+        window.assertApproximateEqual = assertApproximateEqual;
+        window.assertTrue = assertTrue;
+        window.assertFalse = assertFalse;
+    </script>
+    
+    <!-- Load test files -->
+    <script type="module" src="inference.test.js"></script>
+    <script type="module" src="postprocess.test.js"></script>
+    <script type="module" src="camera.test.js"></script>
+    
+    <!-- Run tests -->
+    <script type="module">
+        // Wait for all modules to load, then run tests
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Give modules time to register tests
+            setTimeout(async () => {
+                await window.testRunner.run();
+            }, 100);
+        });
+    </script>
+</body>
+</html>

@@ -5,6 +5,10 @@ import { InferenceEngine } from './inference.js';
 import { PostProcessor } from './postprocess.js';
 import { DependencyLoader } from './dependencyLoader.js';
 import { UnifiedAssetLoader } from './unifiedLoader.js';
+import { logger } from './logger.js';
+import { CONSTANTS } from './constants.js';
+import { ErrorBoundary } from './errorBoundary.js';
+import { PerformanceMonitor } from './performanceMonitor.js';
 
 class ObjectDetectionApp {
   constructor() {
@@ -27,8 +31,19 @@ class ObjectDetectionApp {
     this.isSwitchingCamera = false;
     this.isCapturing = false;
     this.isLoading = false;
+    this.lastCameraSwitchTime = 0;
     
     this.elements = {};
+    
+    // Error boundaries for critical components
+    this.errorBoundaries = {
+      camera: new ErrorBoundary('CameraComponent', this.recoverCamera.bind(this)),
+      inference: new ErrorBoundary('InferenceComponent', this.recoverInference.bind(this)),
+      detection: new ErrorBoundary('DetectionComponent', this.recoverDetection.bind(this))
+    };
+    
+    // Performance monitoring
+    this.performanceMonitor = new PerformanceMonitor();
   }
 
   async initialize() {
@@ -59,7 +74,7 @@ class ObjectDetectionApp {
       this.disableAllButtons();
       this.showModelLoadingBar();
       
-      console.log('🚀 Starting unified asset loading...');
+      logger.info('🚀 Starting unified asset loading...');
       
       // Load ONNX Runtime with progress
       await this.unifiedLoader.loadOnnxRuntime();
@@ -87,10 +102,10 @@ class ObjectDetectionApp {
       this.lastProgress = undefined;
       this.lastMessage = '';
       
-      console.log('✅ Application initialized successfully');
+      logger.info('✅ Application initialized successfully');
       this.logDependencyStatus();
     } catch (error) {
-      console.error('Failed to initialize application:', error);
+      logger.error('Failed to initialize application:', error);
       this.showError('Failed to initialize application: ' + error.message);
     }
   }
@@ -123,12 +138,26 @@ class ObjectDetectionApp {
         this.stopLiveDetection();
       }
     });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (event) => {
+      // Press 'P' to toggle performance monitor
+      if (event.key.toLowerCase() === 'p' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        this.togglePerformanceMonitor();
+        event.preventDefault();
+      }
+      // Press 'R' to reset error boundaries
+      if (event.key.toLowerCase() === 'r' && event.ctrlKey) {
+        this.resetErrorBoundaries();
+        event.preventDefault();
+      }
+    });
   }
 
   async capturePhoto() {
     if (!this.camera.isReady() || this.isCapturing || this.isLoading) return;
 
-    try {
+    const boundCapturePhoto = this.errorBoundaries.detection.wrap(async () => {
       this.isCapturing = true;
       this.elements.captureBtn.disabled = true;
       this.elements.captureBtn.textContent = 'Processing...';
@@ -136,13 +165,17 @@ class ObjectDetectionApp {
       const startTime = Date.now();
       await this.runSingleDetection();
       this.totalTime = Date.now() - startTime;
-    } catch (error) {
-      console.error('Capture failed:', error);
-      this.showError('Capture failed: ' + error.message);
-    } finally {
-      this.isCapturing = false;
-      this.elements.captureBtn.disabled = false;
-      this.elements.captureBtn.textContent = 'Capture Photo';
+    }, this);
+
+    const result = await boundCapturePhoto();
+    
+    // Always reset button state
+    this.isCapturing = false;
+    this.elements.captureBtn.disabled = false;
+    this.elements.captureBtn.textContent = 'Capture Photo';
+    
+    if (result === null) {
+      this.showError('Capture failed - please try again');
     }
   }
 
@@ -173,12 +206,6 @@ class ObjectDetectionApp {
       // Get display dimensions for proper coordinate scaling
       const displayDimensions = this.camera.getDisplayDimensions();
       
-      // Get YOLO-World configuration if applicable
-      /* YOLO-World functionality commented out
-      const yoloWorldConfig = this.modelManager.isCurrentModelYoloWorld() 
-        ? this.modelManager.getYoloWorldConfig() 
-        : null;
-      */
       
       const detectedObjectNames = this.postProcessor.postprocess(
         outputTensor,
@@ -188,7 +215,6 @@ class ObjectDetectionApp {
         config.name,
         this.inferenceEngine.conf2color.bind(this.inferenceEngine),
         displayDimensions
-        /* yoloWorldConfig */
       );
       
       // Update detection log with newly detected objects
@@ -213,6 +239,10 @@ class ObjectDetectionApp {
     this.elements.liveBtn.textContent = 'Stop Live Detection';
     this.elements.liveBtn.classList.add('active');
     
+    // Start performance monitoring for live detection
+    this.performanceMonitor.start();
+    this.performanceMonitor.createDisplay();
+    
     this.runLiveDetectionLoop();
   }
 
@@ -225,6 +255,11 @@ class ObjectDetectionApp {
       cancelAnimationFrame(this.animationId);
       this.animationId = null;
     }
+    
+    // Stop performance monitoring and log summary
+    this.performanceMonitor.stop();
+    this.performanceMonitor.logSummary();
+    this.performanceMonitor.hideDisplay();
   }
 
   async runLiveDetectionLoop() {
@@ -234,8 +269,11 @@ class ObjectDetectionApp {
       const startTime = Date.now();
       await this.runSingleDetection();
       this.totalTime = Date.now() - startTime;
+      
+      // Record frame for performance monitoring
+      this.performanceMonitor.recordFrame(this.inferenceTime, this.totalTime);
     } catch (error) {
-      console.error('Live detection error:', error);
+      logger.error('Live detection error:', error);
     }
 
     // Continue loop
@@ -247,22 +285,43 @@ class ObjectDetectionApp {
   }
 
   async switchCamera() {
+    // Check if already switching or loading
     if (this.isSwitchingCamera || this.isLoading) return;
+    
+    // Check cooldown period
+    const now = Date.now();
+    const timeSinceLastSwitch = now - this.lastCameraSwitchTime;
+    if (timeSinceLastSwitch < CONSTANTS.CAMERA_SWITCH_COOLDOWN_MS) {
+      logger.debug('Camera switch blocked due to cooldown');
+      return;
+    }
 
-    try {
+    const boundSwitchCamera = this.errorBoundaries.camera.wrap(async () => {
       this.isSwitchingCamera = true;
+      this.lastCameraSwitchTime = now;
       this.elements.switchCameraBtn.disabled = true;
       this.elements.switchCameraBtn.textContent = 'Switching...';
       
       this.reset();
-      await this.camera.switchCamera();
-    } catch (error) {
-      console.error('Failed to switch camera:', error);
-      this.showError('Failed to switch camera: ' + error.message);
-    } finally {
-      this.isSwitchingCamera = false;
-      this.elements.switchCameraBtn.disabled = false;
-      this.elements.switchCameraBtn.textContent = 'Switch Camera';
+      
+      // Add timeout protection for camera switching
+      const switchPromise = this.camera.switchCamera();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Camera switch timeout')), CONSTANTS.CAMERA_SWITCH_TIMEOUT_MS);
+      });
+      
+      await Promise.race([switchPromise, timeoutPromise]);
+    }, this);
+
+    const result = await boundSwitchCamera();
+    
+    // Always reset button state
+    this.isSwitchingCamera = false;
+    this.elements.switchCameraBtn.disabled = false;
+    this.elements.switchCameraBtn.textContent = 'Switch Camera';
+    
+    if (result === null) {
+      this.showError('Failed to switch camera - please try again');
     }
   }
 
@@ -331,25 +390,6 @@ class ObjectDetectionApp {
     this.renderDetectionLog();
   }
 
-  /**
-   * Update loading progress in model info area (optimized)
-   */
-  updateLoadingProgress(percentage, message) {
-    // Always update the message
-    if (this.elements.loadingDetails) {
-      this.elements.loadingDetails.textContent = message;
-    }
-    
-    // Only update progress bar if it's active
-    if (this.loadingBarActive) {
-      if (this.elements.loadingProgress) {
-        this.elements.loadingProgress.style.width = `${percentage}%`;
-      }
-      if (this.elements.loadingPercentage) {
-        this.elements.loadingPercentage.textContent = `${Math.round(percentage)}%`;
-      }
-    }
-  }
 
   showLoadingOverlay() {
     if (this.elements.loading) {
@@ -388,7 +428,7 @@ class ObjectDetectionApp {
       setTimeout(() => {
         this.elements.loading.style.display = 'none';
         this.elements.loading.style.transition = '';
-      }, 500);
+      }, CONSTANTS.LOADING_OVERLAY_FADE_MS);
     }
   }
 
@@ -397,20 +437,20 @@ class ObjectDetectionApp {
    */
   async createOnnxSession(modelData, config) {
     // Set ONNX Runtime configuration  
-    ort.env.wasm.wasmPaths = './js/';
+    window.ort.env.wasm.wasmPaths = CONSTANTS.WASM_PATHS;
     
     // Create session from data or URL
-    this.modelManager.currentSession = await ort.InferenceSession.create(modelData, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
+    this.modelManager.currentSession = await window.ort.InferenceSession.create(modelData, {
+      executionProviders: CONSTANTS.EXECUTION_PROVIDERS,
+      graphOptimizationLevel: CONSTANTS.GRAPH_OPTIMIZATION_LEVEL,
     });
     
     // Cache the session
     this.modelManager.loadedModels.set(config.filename, this.modelManager.currentSession);
     
-    console.log(`✅ Model loaded successfully: ${config.filename}`);
-    console.log('📥 Input names:', this.modelManager.currentSession.inputNames);
-    console.log('📤 Output names:', this.modelManager.currentSession.outputNames);
+    logger.info(`✅ Model loaded successfully: ${config.filename}`);
+    logger.debug('📥 Input names:', this.modelManager.currentSession.inputNames);
+    logger.debug('📤 Output names:', this.modelManager.currentSession.outputNames);
   }
 
   /**
@@ -445,16 +485,6 @@ class ObjectDetectionApp {
     }
   }
 
-  /**
-   * Show/hide loading states
-   */
-  showLoadingOverlay() {
-    if (this.elements.loading) {
-      this.elements.loading.style.display = 'block';
-      this.elements.loading.style.opacity = '1';
-    }
-  }
-
   showModelLoadingBar() {
     if (this.elements.modelLoading) {
       this.elements.modelLoading.style.display = 'block';
@@ -464,18 +494,6 @@ class ObjectDetectionApp {
   hideModelLoadingBar() {
     if (this.elements.modelLoading) {
       this.elements.modelLoading.style.display = 'none';
-    }
-  }
-
-  hideLoadingOverlay() {
-    if (this.elements.loading) {
-      this.elements.loading.style.transition = 'opacity 0.5s ease-out';
-      this.elements.loading.style.opacity = '0';
-      
-      setTimeout(() => {
-        this.elements.loading.style.display = 'none';
-        this.elements.loading.style.transition = '';
-      }, 500);
     }
   }
 
@@ -497,7 +515,7 @@ class ObjectDetectionApp {
     requestAnimationFrame(() => {
       this.buttonElements.forEach(btn => {
         btn.disabled = true;
-        btn.style.opacity = '0.5';
+        btn.style.opacity = CONSTANTS.DISABLED_OPACITY;
         btn.style.cursor = 'not-allowed';
       });
     });
@@ -510,7 +528,7 @@ class ObjectDetectionApp {
     requestAnimationFrame(() => {
       this.buttonElements.forEach(btn => {
         btn.disabled = false;
-        btn.style.opacity = '1';
+        btn.style.opacity = CONSTANTS.FULL_OPACITY;
         btn.style.cursor = 'pointer';
       });
     });
@@ -544,17 +562,17 @@ class ObjectDetectionApp {
     this.lastMessage = '';
     this.buttonElements = null;
     
-    console.log('🧹 Application resources cleaned up');
+    logger.debug('🧹 Application resources cleaned up');
   }
 
   logDependencyStatus() {
     const status = this.dependencyLoader.getStatus();
-    console.log('📊 Dependency Status:', status);
+    logger.debug('📊 Dependency Status:', status);
     
     if (status.onnxRuntimeAvailable) {
-      console.log(`✅ ONNX Runtime ${status.onnxRuntimeVersion} loaded successfully`);
+      logger.info(`✅ ONNX Runtime ${status.onnxRuntimeVersion} loaded successfully`);
     } else {
-      console.warn('⚠️ ONNX Runtime not available');
+      logger.warn('⚠️ ONNX Runtime not available');
     }
   }
 
@@ -587,11 +605,117 @@ class ObjectDetectionApp {
       if (errorDiv.parentNode) {
         errorDiv.remove();
       }
-    }, 5000);
+    }, CONSTANTS.ERROR_TOAST_TIMEOUT_MS);
     
     // Announce to screen readers
     errorDiv.setAttribute('role', 'alert');
     errorDiv.setAttribute('aria-live', 'assertive');
+  }
+
+  /**
+   * Recovery methods for error boundaries
+   */
+  async recoverCamera(error) {
+    logger.info('Attempting camera recovery...');
+    
+    try {
+      // Stop current operations
+      this.stopLiveDetection();
+      
+      // Reinitialize camera
+      await this.camera.initialize(this.elements.video, this.elements.canvas);
+      
+      logger.info('Camera recovery successful');
+      return true;
+    } catch (recoveryError) {
+      logger.error('Camera recovery failed:', recoveryError);
+      throw recoveryError;
+    }
+  }
+
+  async recoverInference(error) {
+    logger.info('Attempting inference recovery...');
+    
+    try {
+      // Clean up inference engine cache
+      this.inferenceEngine.cleanup();
+      
+      // Try to reload the current model
+      const config = this.modelManager.getCurrentModelConfig();
+      if (config) {
+        // Clear model cache and try to reload
+        this.modelManager.clearCache();
+        
+        // Force garbage collection if available
+        if (typeof gc === 'function') {
+          gc();
+        }
+      }
+      
+      logger.info('Inference recovery successful');
+      return true;
+    } catch (recoveryError) {
+      logger.error('Inference recovery failed:', recoveryError);
+      throw recoveryError;
+    }
+  }
+
+  async recoverDetection(error) {
+    logger.info('Attempting detection recovery...');
+    
+    try {
+      // Stop live detection and reset
+      this.reset();
+      
+      // Clear detection log
+      this.clearDetectionLog();
+      
+      // Ensure camera is still ready
+      if (!this.camera.isReady()) {
+        await this.camera.initialize(this.elements.video, this.elements.canvas);
+      }
+      
+      logger.info('Detection recovery successful');
+      return true;
+    } catch (recoveryError) {
+      logger.error('Detection recovery failed:', recoveryError);
+      throw recoveryError;
+    }
+  }
+
+  /**
+   * Get error boundary statistics for debugging
+   */
+  getErrorStats() {
+    const stats = {};
+    for (const [name, boundary] of Object.entries(this.errorBoundaries)) {
+      stats[name] = boundary.getStats();
+    }
+    return stats;
+  }
+
+  /**
+   * Toggle performance monitor display
+   */
+  togglePerformanceMonitor() {
+    if (this.performanceMonitor.displayElement) {
+      this.performanceMonitor.hideDisplay();
+      logger.info('Performance monitor hidden (Press P to show)');
+    } else {
+      this.performanceMonitor.createDisplay();
+      logger.info('Performance monitor shown (Press P to hide)');
+    }
+  }
+
+  /**
+   * Reset all error boundaries
+   */
+  resetErrorBoundaries() {
+    for (const [name, boundary] of Object.entries(this.errorBoundaries)) {
+      boundary.reset();
+    }
+    logger.info('All error boundaries reset');
+    this.showError('Error boundaries reset - Ctrl+R pressed');
   }
 }
 
@@ -656,18 +780,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Add global error handler for unhandled errors
     window.addEventListener('error', (event) => {
-      console.error('Global error:', event.error);
+      logger.error('Global error:', event.error);
       app.showError('An unexpected error occurred. Please refresh the page.');
     });
     
     window.addEventListener('unhandledrejection', (event) => {
-      console.error('Unhandled promise rejection:', event.reason);
+      logger.error('Unhandled promise rejection:', event.reason);
       app.showError('An unexpected error occurred. Please refresh the page.');
       event.preventDefault();
     });
     
   } catch (error) {
-    console.error('Failed to initialize application:', error);
+    logger.error('Failed to initialize application:', error);
     
     // Fallback error display if app.showError is not available
     const errorDiv = document.createElement('div');

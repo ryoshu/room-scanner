@@ -17,7 +17,9 @@
     "build:verify": "npm run build && npm run verify",
     "type-check": "echo 'Type checking would go here with TypeScript'",
     "format": "echo 'Code formatting would go here with Prettier'",
-    "lint": "echo 'Linting would go here with ESLint'"
+    "lint": "echo 'Linting would go here with ESLint'",
+    "test": "echo 'Open test/test-runner.html in your browser to run tests'",
+    "test:serve": "npx http-server -p 8081 -o test/test-runner.html"
   },
   "devDependencies": {
     "vite": "^5.0.0"

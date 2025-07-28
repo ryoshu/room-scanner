@@ -1,4 +1,6 @@
 // Asset management system with CDN-first, local fallback strategy
+import { logger } from './logger.js';
+
 export class AssetManager {
   constructor() {
     this.cdnConfig = {
@@ -54,11 +56,11 @@ export class AssetManager {
       const isLocal = url.startsWith('./') || url.startsWith('/');
       
       try {
-        console.log(`🔍 Verifying ${assetType}/${filename} from ${source}: ${url}`);
+        logger.debug(`🔍 Verifying ${assetType}/${filename} from ${source}: ${url}`);
         
         // For local files, assume they exist (can't verify without download)
         if (isLocal) {
-          console.log(`✅ Local ${assetType}/${filename} assumed available`);
+          logger.debug(`✅ Local ${assetType}/${filename} assumed available`);
           return {
             url,
             source,
@@ -70,7 +72,7 @@ export class AssetManager {
         const success = await this.checkAssetHead(url, options);
         
         if (success) {
-          console.log(`✅ CDN ${assetType}/${filename} verified available`);
+          logger.debug(`✅ CDN ${assetType}/${filename} verified available`);
           return {
             url,
             source,
@@ -79,7 +81,7 @@ export class AssetManager {
         }
         
       } catch (error) {
-        console.warn(`❌ Failed to verify ${assetType}/${filename} from ${source}:`, error.message);
+        logger.warn(`❌ Failed to verify ${assetType}/${filename} from ${source}:`, error.message);
       }
     }
     
@@ -187,12 +189,12 @@ export class AssetManager {
       const source = i === 0 ? 'CDN' : 'Local';
       
       try {
-        console.log(`📦 Loading ${assetType}/${filename} from ${source}: ${url}`);
+        logger.debug(`📦 Loading ${assetType}/${filename} from ${source}: ${url}`);
         
         // For local files, skip verification and trust they exist
         // ONNX Runtime will give us a better error if the file doesn't exist
         if (url.startsWith('./') || url.startsWith('/')) {
-          console.log(`✅ Using local ${assetType}/${filename} without verification`);
+          logger.debug(`✅ Using local ${assetType}/${filename} without verification`);
           
           this.loadAttempts.set(attemptKey, {
             url,
@@ -206,7 +208,7 @@ export class AssetManager {
         
         // For CDN files, download with progress if requested
         if (options.downloadWithProgress && options.onProgress) {
-          console.log(`📋 Downloading ${assetType}/${filename} with progress tracking`);
+          logger.debug(`📋 Downloading ${assetType}/${filename} with progress tracking`);
           const data = await this.downloadAssetWithProgress(url, options);
           
           this.loadAttempts.set(attemptKey, {
@@ -223,7 +225,7 @@ export class AssetManager {
         const success = await this.verifyAssetAvailabilityLegacy(url, options);
         
         if (success) {
-          console.log(`✅ Successfully verified ${assetType}/${filename} from ${source}`);
+          logger.debug(`✅ Successfully verified ${assetType}/${filename} from ${source}`);
           
           this.loadAttempts.set(attemptKey, {
             url,
@@ -236,7 +238,7 @@ export class AssetManager {
         }
         
       } catch (error) {
-        console.warn(`❌ Failed to load ${assetType}/${filename} from ${source}:`, error.message);
+        logger.warn(`❌ Failed to load ${assetType}/${filename} from ${source}:`, error.message);
         
         // Record failed attempt
         this.loadAttempts.set(attemptKey, {
@@ -300,7 +302,7 @@ export class AssetManager {
         if (contentLength > 0) {
           const sizeDiff = Math.abs(contentLength - options.expectedSize) / options.expectedSize;
           if (sizeDiff > tolerance) {
-            console.warn(`⚠️ Size difference detected: expected ~${options.expectedSize}, got ${contentLength} (${(sizeDiff * 100).toFixed(1)}% difference)`);
+            logger.warn(`⚠️ Size difference detected: expected ~${options.expectedSize}, got ${contentLength} (${(sizeDiff * 100).toFixed(1)}% difference)`);
             // Don't fail on size mismatch for CDN, just warn
           }
         }
@@ -357,7 +359,7 @@ export class AssetManager {
         if (contentLength > 0) {
           const sizeDiff = Math.abs(contentLength - options.expectedSize) / options.expectedSize;
           if (sizeDiff > tolerance) {
-            console.warn(`⚠️ Size difference detected: expected ~${options.expectedSize}, got ${contentLength} (${(sizeDiff * 100).toFixed(1)}% difference)`);
+            logger.warn(`⚠️ Size difference detected: expected ~${options.expectedSize}, got ${contentLength} (${(sizeDiff * 100).toFixed(1)}% difference)`);
             // Don't fail on size mismatch for local files, just warn
             if (!url.startsWith('./')) {
               throw new Error(`Size mismatch: expected ~${options.expectedSize}, got ${contentLength} (${(sizeDiff * 100).toFixed(1)}% difference)`);
@@ -386,20 +388,20 @@ export class AssetManager {
     try {
       // Try CDN first
       await this.loadScript('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js');
-      console.log('✅ ONNX Runtime loaded from CDN');
+      logger.info('✅ ONNX Runtime loaded from CDN');
       return 'CDN';
       
     } catch (error) {
-      console.warn('❌ CDN failed, trying local fallback:', error.message);
+      logger.warn('❌ CDN failed, trying local fallback:', error.message);
       
       try {
         // Fallback to local version
         await this.loadScript('./lib/ort.min.js');
-        console.log('✅ ONNX Runtime loaded from local fallback');
+        logger.info('✅ ONNX Runtime loaded from local fallback');
         return 'Local';
         
       } catch (localError) {
-        console.error('❌ Local fallback also failed:', localError.message);
+        logger.error('❌ Local fallback also failed:', localError.message);
         throw new Error('Failed to load ONNX Runtime from both CDN and local sources');
       }
     }
@@ -491,7 +493,7 @@ export class AssetManager {
     }
     
     if (cleaned > 0) {
-      console.log(`🧹 Cleaned up ${cleaned} old asset load attempts`);
+      logger.debug(`🧹 Cleaned up ${cleaned} old asset load attempts`);
     }
   }
 

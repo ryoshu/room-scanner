@@ -1,5 +1,6 @@
 // Dependency loader with CDN fallback for critical runtime dependencies
 import { AssetManager } from './assetManager.js';
+import { logger } from './logger.js';
 
 export class DependencyLoader {
   constructor() {
@@ -29,11 +30,11 @@ export class DependencyLoader {
         } else {
           // Clean up stale state
           this.loadedDependencies.delete(depKey);
-          console.warn('🧹 Cleaned up stale ONNX Runtime state, reloading...');
+          logger.warn('🧹 Cleaned up stale ONNX Runtime state, reloading...');
         }
       } catch (error) {
         this.loadedDependencies.delete(depKey);
-        console.warn('🧹 ONNX Runtime state validation failed, reloading...', error.message);
+        logger.warn('🧹 ONNX Runtime state validation failed, reloading...', error.message);
       }
     }
 
@@ -72,7 +73,7 @@ export class DependencyLoader {
 
     for (const strategy of strategies) {
       try {
-        console.log(`🔄 Loading ONNX Runtime from ${strategy.name}: ${strategy.url}`);
+        logger.debug(`🔄 Loading ONNX Runtime from ${strategy.name}: ${strategy.url}`);
         
         await this._loadScript(strategy.url, strategy.integrity);
         
@@ -84,7 +85,7 @@ export class DependencyLoader {
         // Test basic functionality
         await this._verifyOnnxRuntime();
         
-        console.log(`✅ ONNX Runtime loaded successfully from ${strategy.name}`);
+        logger.info(`✅ ONNX Runtime loaded successfully from ${strategy.name}`);
         
         // Configure WASM paths
         this._configureOnnxRuntime();
@@ -96,7 +97,7 @@ export class DependencyLoader {
         };
         
       } catch (error) {
-        console.warn(`❌ Failed to load ONNX Runtime from ${strategy.name}:`, error.message);
+        logger.warn(`❌ Failed to load ONNX Runtime from ${strategy.name}:`, error.message);
         continue;
       }
     }
@@ -149,7 +150,7 @@ export class DependencyLoader {
       
       script.onload = () => {
         clearTimeout(timeout);
-        console.log(`📦 Script loaded: ${src}`);
+        logger.debug(`📦 Script loaded: ${src}`);
         resolve();
       };
       
@@ -217,7 +218,7 @@ export class DependencyLoader {
       
       // Test WASM backend availability
       const backends = ort.env.webgl ? ['webgl', 'wasm'] : ['wasm'];
-      console.log(`🔧 Available ONNX backends: ${backends.join(', ')}`);
+      logger.debug(`🔧 Available ONNX backends: ${backends.join(', ')}`);
       
       return true;
     } catch (error) {
@@ -242,10 +243,10 @@ export class DependencyLoader {
         ort.env.logLevel = 'warning';
       }
       
-      console.log('⚙️ ONNX Runtime configured successfully');
+      logger.info('⚙️ ONNX Runtime configured successfully');
       
     } catch (error) {
-      console.warn('⚠️ ONNX Runtime configuration warning:', error.message);
+      logger.warn('⚠️ ONNX Runtime configuration warning:', error.message);
     }
   }
 
@@ -253,7 +254,7 @@ export class DependencyLoader {
    * Preload all dependencies
    */
   async preloadDependencies() {
-    console.log('🚀 Preloading dependencies...');
+    logger.info('🚀 Preloading dependencies...');
     
     const results = [];
     

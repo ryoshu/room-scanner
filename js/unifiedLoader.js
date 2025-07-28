@@ -1,32 +1,35 @@
 // Unified Asset Loader with Real Progress Tracking
+import { CONSTANTS } from './constants.js';
+import { logger } from './logger.js';
+
 export class UnifiedAssetLoader {
   constructor() {
     this.isLoading = false;
     this.progressCallback = null;
-    this.totalSteps = 100;
+    this.totalSteps = CONSTANTS.PROGRESS_MAX;
     this.currentStep = 0;
     this.lastProgressUpdate = 0;
-    this.progressThrottle = 100; // Throttle progress updates to 100ms
+    this.progressThrottle = CONSTANTS.PROGRESS_THROTTLE_MS; // Throttle progress updates
     
     // Cache for availability checks
     this.availabilityCache = new Map();
-    this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
+    this.cacheTimeout = CONSTANTS.CACHE_TIMEOUT_MS; // 5 minutes
     
     // Asset configuration
     this.assets = {
       onnxRuntime: {
         cdnUrl: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js',
         localUrl: './lib/ort.min.js',
-        progressWeight: 20 // 0-20% of total progress
+        progressWeight: CONSTANTS.ONNX_RUNTIME_PROGRESS_WEIGHT // 0-20% of total progress
       },
       models: {
         cdnBaseUrl: 'https://example-cdn.com/models/',
         localBaseUrl: './models/',
-        progressWeight: 80 // 20-100% of total progress
+        progressWeight: CONSTANTS.MODEL_PROGRESS_WEIGHT // 20-100% of total progress
       }
     };
     
-    this.timeout = 30000; // 30 seconds for downloads
+    this.timeout = CONSTANTS.DOWNLOAD_TIMEOUT_MS; // 30 seconds for downloads
   }
 
   /**
@@ -53,14 +56,14 @@ export class UnifiedAssetLoader {
     
     if (stage === 'onnx') {
       // ONNX Runtime: 0-20%
-      totalProgress = (localProgress * this.assets.onnxRuntime.progressWeight) / 100;
+      totalProgress = (localProgress * this.assets.onnxRuntime.progressWeight) / CONSTANTS.PROGRESS_MAX;
     } else if (stage === 'model') {
       // Model: 20-100%
       totalProgress = this.assets.onnxRuntime.progressWeight + 
-                     (localProgress * this.assets.models.progressWeight) / 100;
+                     (localProgress * this.assets.models.progressWeight) / CONSTANTS.PROGRESS_MAX;
     }
     
-    this.currentStep = Math.min(100, totalProgress);
+    this.currentStep = Math.min(CONSTANTS.PROGRESS_MAX, totalProgress);
     this.progressCallback(this.currentStep, message);
   }
 
@@ -87,7 +90,7 @@ export class UnifiedAssetLoader {
       if (!reader) {
         // Fallback for responses without readable stream
         const data = await response.arrayBuffer();
-        onProgress && onProgress(100, data.byteLength, data.byteLength);
+        onProgress && onProgress(CONSTANTS.PROGRESS_MAX, data.byteLength, data.byteLength);
         clearTimeout(timeoutId);
         return data;
       }
@@ -107,7 +110,7 @@ export class UnifiedAssetLoader {
         
         // Throttle progress reports to avoid callback overhead
         if (onProgress && contentLength > 0) {
-          const progress = Math.min(100, (receivedLength / contentLength) * 100);
+          const progress = Math.min(CONSTANTS.PROGRESS_MAX, (receivedLength / contentLength) * CONSTANTS.PROGRESS_MAX);
           if (progress - lastProgressReport >= 1) { // Report every 1% change
             onProgress(progress, receivedLength, contentLength);
             lastProgressReport = progress;
@@ -152,7 +155,7 @@ export class UnifiedAssetLoader {
     
     // Check if already loaded
     if (typeof window.ort !== 'undefined') {
-      this.updateProgress(100, 'onnx', 'ONNX Runtime already loaded');
+      this.updateProgress(CONSTANTS.PROGRESS_MAX, 'onnx', 'ONNX Runtime already loaded');
       return true;
     }
     
@@ -168,7 +171,7 @@ export class UnifiedAssetLoader {
         if (url.startsWith('./')) {
           // Local file - load as script
           await this.loadScript(url);
-          this.updateProgress(100, 'onnx', 'ONNX Runtime loaded successfully');
+          this.updateProgress(CONSTANTS.PROGRESS_MAX, 'onnx', 'ONNX Runtime loaded successfully');
           return true;
         } else {
           // CDN file - download with progress then execute
@@ -184,12 +187,12 @@ export class UnifiedAssetLoader {
           script.textContent = new TextDecoder().decode(scriptContent);
           document.head.appendChild(script);
           
-          this.updateProgress(100, 'onnx', 'ONNX Runtime loaded successfully');
+          this.updateProgress(CONSTANTS.PROGRESS_MAX, 'onnx', 'ONNX Runtime loaded successfully');
           return true;
         }
         
       } catch (error) {
-        console.warn(`Failed to load ONNX Runtime from ${source}:`, error.message);
+        logger.warn(`Failed to load ONNX Runtime from ${source}:`, error.message);
         if (i === urls.length - 1) {
           throw new Error('Failed to load ONNX Runtime from all sources');
         }
@@ -252,7 +255,7 @@ export class UnifiedAssetLoader {
         
         if (isLocal) {
           // Local file - just return URL for ONNX Runtime to load
-          this.updateProgress(100, 'model', 'Model loaded from local storage');
+          this.updateProgress(CONSTANTS.PROGRESS_MAX, 'model', 'Model loaded from local storage');
           return url;
         } else {
           // CDN file - download with progress
@@ -266,12 +269,12 @@ export class UnifiedAssetLoader {
           }, expectedSize);
           
           this.updateProgress(95, 'model', 'Download complete');
-          this.updateProgress(100, 'model', 'Model ready for loading');
+          this.updateProgress(CONSTANTS.PROGRESS_MAX, 'model', 'Model ready for loading');
           return modelData;
         }
         
       } catch (error) {
-        console.warn(`Failed to load model from ${source}:`, error.message);
+        logger.warn(`Failed to load model from ${source}:`, error.message);
         if (i === urls.length - 1) {
           throw new Error(`Failed to load model ${filename} from all sources`);
         }
