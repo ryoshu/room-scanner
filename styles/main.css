@@ -59,8 +59,7 @@
 
 /* Backdrop filter support for modern browsers */
 @supports (backdrop-filter: blur(10px)) {
-    .model-info,
-    .performance-metrics {
+    .model-info {
         backdrop-filter: blur(10px);
         background-color: rgba(255, 255, 255, 0.1);
     }
@@ -82,12 +81,12 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    padding: var(--space-sm);
+    padding: var(--space-md);
     overflow-x: hidden;
 }
 
 .app-title {
-    margin: var(--space-sm) 0;
+    margin: var(--space-md) 0;
     font-size: var(--text-lg);
     font-weight: bold;
     text-align: center;
@@ -106,22 +105,17 @@ body {
     justify-items: center;
 }
 
-/* Tablet and up: Side-by-side layout */
+/* Tablet and up: Centered layout */
 @media (min-width: 768px) {
-    .app-container {
-        padding: var(--space-lg);
-    }
-    
     .app-title {
         font-size: var(--text-xl);
-        margin: var(--space-md) 0;
     }
     
     .detection-container {
-        grid-template-columns: 1fr auto;
+        grid-template-columns: 1fr;
         gap: var(--space-lg);
         align-items: center;
-        justify-items: stretch;
+        justify-items: center;
         max-width: 1400px;
         margin: 0 auto;
     }
@@ -130,8 +124,8 @@ body {
 /* Large screens: Optimized spacing */
 @media (min-width: 1024px) {
     .detection-container {
-        gap: var(--space-xl);
-        grid-template-columns: 1fr 400px;
+        gap: var(--space-lg);
+        grid-template-columns: 1fr;
     }
 }
 
@@ -175,14 +169,15 @@ body {
 /* Larger screens: Allow bigger camera view */
 @media (min-width: 768px) {
     .webcam-container {
-        max-width: min(60vw, 800px);
-        aspect-ratio: 16/9;
+        max-width: min(90vw, 640px);
+        aspect-ratio: 4/3;
     }
 }
 
 @media (min-width: 1024px) {
     .webcam-container {
-        max-width: 800px;
+        max-width: min(90vw, 640px);
+        aspect-ratio: 4/3;
     }
 }
 
@@ -359,60 +354,8 @@ body {
 }
 
 
-/* Performance metrics - Mobile optimized */
-.performance-metrics {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-sm);
-    width: 100%;
-    padding: var(--space-sm);
-    background-color: rgba(255, 255, 255, 0.03);
-    border-radius: clamp(6px, 1.5vw, 8px);
-    font-size: var(--text-xs);
-}
 
-.metrics-column {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-xs);
-    text-align: center;
-}
 
-.metrics-column div {
-    padding: var(--space-xs);
-    background-color: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-    font-size: var(--text-xs);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Tablet: Two columns */
-@media (min-width: 480px) {
-    .performance-metrics {
-        grid-template-columns: 1fr 1fr;
-        gap: var(--space-md);
-        font-size: var(--text-sm);
-    }
-    
-    .metrics-column div {
-        font-size: var(--text-sm);
-    }
-}
-
-/* Desktop: Horizontal layout */
-@media (min-width: 768px) {
-    .performance-metrics {
-        grid-template-columns: repeat(2, 1fr);
-        gap: var(--space-lg);
-        padding: var(--space-md);
-    }
-    
-    .metrics-column {
-        text-align: left;
-    }
-}
 
 /* Screen reader only content */
 .sr-only {
@@ -581,26 +524,11 @@ body {
         padding: 10px 12px;
     }
     
-    .performance-metrics {
-        flex-direction: column;
-        gap: 15px;
-        padding: 0;
-        text-align: center;
-    }
-    
-    .metrics-column {
-        align-items: center;
-    }
 }
 
 @media (max-width: 480px) {
-    .app-container {
-        padding: 10px;
-    }
-    
     .app-title {
         font-size: 1rem;
-        margin: 10px 0;
     }
     
     .button-group {
@@ -611,10 +539,6 @@ body {
     .control-btn {
         width: 100%;
         min-width: unset;
-    }
-    
-    .performance-metrics {
-        font-size: 12px;
     }
 }
 
@@ -665,7 +589,7 @@ body {
     
     .webcam-container {
         max-width: min(50vw, 400px);
-        aspect-ratio: 16/9;
+        aspect-ratio: 4/3;
     }
     
     .controls-container {
@@ -682,11 +606,6 @@ body {
         min-height: 40px;
     }
     
-    .performance-metrics {
-        grid-template-columns: 1fr 1fr;
-        gap: var(--space-xs);
-        font-size: var(--text-xs);
-    }
 }
 
 @media (orientation: portrait) and (min-width: 768px) {
@@ -699,7 +618,7 @@ body {
     
     .webcam-container {
         max-width: min(80vw, 600px);
-        aspect-ratio: 3/4;
+        aspect-ratio: 4/3;
     }
     
     .controls-container {

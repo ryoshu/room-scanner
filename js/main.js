@@ -42,13 +42,7 @@ class ObjectDetectionApp {
         captureBtn: document.getElementById('capture-btn'),
         liveBtn: document.getElementById('live-btn'),
         switchCameraBtn: document.getElementById('switch-camera-btn'),
-        resetBtn: document.getElementById('reset-btn'),
-        modelInferenceTime: document.getElementById('model-inference-time'),
-        totalTime: document.getElementById('total-time'),
-        overheadTime: document.getElementById('overhead-time'),
-        modelFps: document.getElementById('model-fps'),
-        totalFps: document.getElementById('total-fps'),
-        overheadFps: document.getElementById('overhead-fps')
+        resetBtn: document.getElementById('reset-btn')
       };
       
       // Set up unified loader progress callback
@@ -138,7 +132,6 @@ class ObjectDetectionApp {
       const startTime = Date.now();
       await this.runSingleDetection();
       this.totalTime = Date.now() - startTime;
-      this.updatePerformanceMetrics();
     } catch (error) {
       console.error('Capture failed:', error);
       this.showError('Capture failed: ' + error.message);
@@ -232,7 +225,6 @@ class ObjectDetectionApp {
       const startTime = Date.now();
       await this.runSingleDetection();
       this.totalTime = Date.now() - startTime;
-      this.updatePerformanceMetrics();
     } catch (error) {
       console.error('Live detection error:', error);
     }
@@ -271,28 +263,11 @@ class ObjectDetectionApp {
     this.camera.reset();
     this.inferenceTime = 0;
     this.totalTime = 0;
-    this.updatePerformanceMetrics();
   }
 
-
-  updatePerformanceMetrics() {
-    // Update time metrics
-    this.elements.modelInferenceTime.textContent = `Model Inference Time: ${this.inferenceTime.toFixed()}ms`;
-    this.elements.totalTime.textContent = `Total Time: ${this.totalTime.toFixed()}ms`;
-    this.elements.overheadTime.textContent = `Overhead Time: +${(this.totalTime - this.inferenceTime).toFixed(2)}ms`;
-
-    // Update FPS metrics
-    const modelFps = this.inferenceTime > 0 ? (1000 / this.inferenceTime).toFixed(2) : '0';
-    const totalFps = this.totalTime > 0 ? (1000 / this.totalTime).toFixed(2) : '0';
-    const overheadFps = this.totalTime > 0 && this.inferenceTime > 0 
-      ? (1000 * (1 / this.totalTime - 1 / this.inferenceTime)).toFixed(2) 
-      : '0';
-
-    this.elements.modelFps.textContent = `Model FPS: ${modelFps}fps`;
-    this.elements.totalFps.textContent = `Total FPS: ${totalFps}fps`;
-    this.elements.overheadFps.textContent = `Overhead FPS: ${overheadFps}fps`;
-  }
-
+  /**
+   * Update loading progress in model info area (optimized)
+   */
   updateLoadingProgress(percentage, message) {
     // Always update the message
     if (this.elements.loadingDetails) {
